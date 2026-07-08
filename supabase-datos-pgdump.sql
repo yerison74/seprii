@@ -1,0 +1,31 @@
+-- =============================================================================
+-- SEPRI — Replicar datos con pg_dump / pg_restore (alternativa nativa)
+-- =============================================================================
+-- Usa esta vía si tienes la connection string de Postgres (Supabase → Settings → Database).
+-- Sustituye [PASSWORD], [PROJECT_REF] y [REGION] por los valores de tu proyecto.
+--
+-- ── EXPORTAR solo datos (origen) ─────────────────────────────────────────────
+-- pg_dump "postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres" \
+--   --data-only \
+--   --schema=public \
+--   --no-owner \
+--   --no-privileges \
+--   --exclude-table-data=storage.* \
+--   -f sepri-datos.sql
+--
+-- ── IMPORTAR datos (destino, esquema ya creado con supabase-schema-completo.sql) ─
+-- 1) Opcional: supabase-datos-vaciar.sql en SQL Editor del destino
+-- 2) psql "postgresql://postgres.[PROJECT_REF]:[PASSWORD]@..." -f sepri-datos.sql
+-- 3) supabase-datos-secuencias.sql  (SELECT sepri_reset_secuencias)
+--
+-- ── EXPORTAR esquema + datos (clon completo) ───────────────────────────────────
+-- pg_dump "postgresql://..." \
+--   --schema=public \
+--   --no-owner \
+--   --no-privileges \
+--   -f sepri-completo.sql
+--
+-- Nota: el bucket storage "documentos" no se incluye en pg_dump.
+-- Para archivos: Supabase Dashboard → Storage → documentos → descarga manual
+-- o usa la API de Storage.
+-- =============================================================================
