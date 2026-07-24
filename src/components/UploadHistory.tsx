@@ -269,6 +269,7 @@ const TramiteHistory: React.FC<TramiteHistoryProps> = ({ soloLectura = false }) 
     proceso: '' as string,
     archivo_pdf: null as File | null,
     id_sigede: [] as string[],
+    obra_ids: [] as string[],
   });
   const [obrasResumenTramite, setObrasResumenTramite] = useState<ObraSigedeResumen[]>([]);
   const [uploadingPdf, setUploadingPdf] = useState(false);
@@ -577,6 +578,9 @@ const TramiteHistory: React.FC<TramiteHistoryProps> = ({ soloLectura = false }) 
         if (nuevoTramite.id_sigede.length > 0) {
           formData.append('id_sigede', JSON.stringify(nuevoTramite.id_sigede));
         }
+        if (nuevoTramite.obra_ids.length > 0) {
+          formData.append('obra_ids', JSON.stringify(nuevoTramite.obra_ids));
+        }
 
         const response = await tramitesAPI.crearTramiteConArchivo(formData);
         nuevoTramiteData = response.data.data;
@@ -595,6 +599,7 @@ const TramiteHistory: React.FC<TramiteHistoryProps> = ({ soloLectura = false }) 
           proceso: nuevoTramite.proceso || undefined,
           codigo_area: getCodigoArea(user?.area || ''),
           id_sigede: nuevoTramite.id_sigede,
+          obra_ids: nuevoTramite.obra_ids,
         });
         nuevoTramiteData = response.data.data;
       }
@@ -626,6 +631,7 @@ const TramiteHistory: React.FC<TramiteHistoryProps> = ({ soloLectura = false }) 
         proceso: '',
         archivo_pdf: null,
         id_sigede: [],
+        obra_ids: [],
       });
       setObrasResumenTramite([]);
       if (fileInputRef.current) {

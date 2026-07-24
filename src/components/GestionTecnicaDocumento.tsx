@@ -35,6 +35,7 @@ import SeccionColapsable from './ui/SeccionColapsable';
 import GestionTecnicaAdendasSection, {
   camposDocumentoDesdeAdendas,
 } from './GestionTecnicaAdendasSection';
+import GestionTecnicaComentariosPanel from './GestionTecnicaComentariosPanel';
 import ModuloPageHeader from './ui/ModuloPageHeader';
 import SepriListCard from './ui/SepriListCard';
 import {
@@ -663,6 +664,10 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
   const contratoIdPanel =
     contratoSel?.id || docForm.contrato_id || seleccionado?.contrato_id || null;
   const contratoPanel = contratoSel || seleccionado?.contrato || null;
+  const documentoIdPanel = editandoId || seleccionado?.id || null;
+  const nombreUsuarioActual = user
+    ? [user.nombre, user.apellido].filter(Boolean).join(' ').trim()
+    : '';
 
   const cargarDocumentos = useCallback(async () => {
     try {
@@ -729,7 +734,7 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
     }
     const timer = window.setTimeout(async () => {
       try {
-        const resp = await gestionTecnicaDocumentoAPI.buscarContratos(term, 8);
+        const resp = await gestionTecnicaDocumentoAPI.buscarContratos(term, 25);
         setContratoOpciones(resp.data.data || []);
       } catch {
         setContratoOpciones([]);
@@ -858,10 +863,42 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
     cargarMovEnFormulario(mov);
   };
 
+  const cargarObrasDelContrato = useCallback(async (contrato: ContratoTechado) => {
+    if (!contrato?.id && !contrato?.no_contrato) return;
+    try {
+      const resp = await gestionTecnicaDocumentoAPI.obrasPorContrato(
+        contrato.id || '',
+        contrato.no_contrato,
+      );
+      const { id_sigede, obra_ids } = resp.data.data || { id_sigede: [], obra_ids: [] };
+      const nSigede = (id_sigede || []).length;
+      const nObras = (obra_ids || []).length;
+      setDocForm((prev) => {
+        const sigedes = Array.from(new Set([...prev.id_sigede, ...(id_sigede || [])]));
+        const obras = Array.from(new Set([...prev.obra_ids, ...(obra_ids || [])]));
+        return { ...prev, id_sigede: sigedes, obra_ids: obras };
+      });
+      if (nSigede === 0 && nObras === 0) {
+        setError(
+          `El contrato ${contrato.no_contrato} no tiene obras vinculadas. Elija el número completo (p. ej. 0459-2025), no solo el prefijo.`,
+        );
+      }
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+        'No se pudieron cargar las obras del contrato';
+      setError(msg);
+    }
+  }, []);
+
   const resolverYVincularContrato = useCallback(
-    async (noContrato: string): Promise<ContratoTechado | null> => {
+    async (
+      noContrato: string,
+      opciones?: { cargarObras?: boolean },
+    ): Promise<ContratoTechado | null> => {
       const norm = normalizarNoContrato(noContrato);
       if (!norm) return null;
+      const debeCargarObras = opciones?.cargarObras !== false;
       setResolviendoContrato(true);
       try {
         const resp = await gestionTecnicaDocumentoAPI.resolverContratoDesdeObras(
@@ -874,6 +911,7 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
           setDocForm((p) => ({ ...p, contrato_id: contrato.id }));
           setContratoBusqueda('');
           setContratoOpciones([]);
+          if (debeCargarObras) await cargarObrasDelContrato(contrato);
           return contrato;
         }
         setError(`No se pudo registrar el contrato ${norm} en el catálogo`);
@@ -888,19 +926,22 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
         setResolviendoContrato(false);
       }
     },
-    [contratistaSel],
+    [contratistaSel, cargarObrasDelContrato],
   );
 
   const confirmarContratoDesdeBusqueda = useCallback(() => {
     const norm = normalizarNoContrato(contratoBusqueda);
     if (!norm || contratoSel) return;
+    // Evita fijar prefijos huérfanos (ej. "0459") que no tienen obras.
+    if (!/^\d{4}-\d{2}$/.test(norm) && !/^\d{4}-\d{4}$/.test(norm)) return;
     void resolverYVincularContrato(norm);
   }, [contratoBusqueda, contratoSel, resolverYVincularContrato]);
 
   useEffect(() => {
     if (contratoSel || soloLectura || resolviendoContrato) return;
     const norm = normalizarNoContrato(contratoBusqueda);
-    if (!/^\d{4}-\d{4}$/.test(norm)) return;
+    // Acepta formatos reales del catálogo: xxxx-yy y xxxx-yyyy
+    if (!/^\d{4}-\d{2}$/.test(norm) && !/^\d{4}-\d{4}$/.test(norm)) return;
     const t = window.setTimeout(() => {
       void resolverYVincularContrato(norm);
     }, 650);
@@ -914,11 +955,12 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
         setDocForm((p) => ({ ...p, contrato_id: c.id }));
         setContratoBusqueda('');
         setContratoOpciones([]);
+        await cargarObrasDelContrato(c);
         return;
       }
       await resolverYVincularContrato(c.no_contrato);
     },
-    [resolverYVincularContrato],
+    [resolverYVincularContrato, cargarObrasDelContrato],
   );
 
   const resolverContratoParaDocumento = useCallback(
@@ -949,7 +991,7 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
       }
       const numObra = doc.obras_sigede?.find((o) => o.contrato?.trim())?.contrato?.trim();
       if (numObra) {
-        await resolverYVincularContrato(numObra);
+        await resolverYVincularContrato(numObra, { cargarObras: false });
       }
     },
     [resolverYVincularContrato],
@@ -998,7 +1040,7 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
     setObraBusqueda('');
     setObraOpciones([]);
     if (!contratoSel && obra.contrato?.trim()) {
-      await resolverYVincularContrato(obra.contrato);
+      await resolverYVincularContrato(obra.contrato, { cargarObras: false });
     }
   };
 
@@ -1053,8 +1095,9 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
     }
   };
 
-  const handleGuardarDocumento = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleGuardarDocumento = async (e?: React.FormEvent | React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     if (soloLectura) return;
     if (!docForm.solicitud.trim()) {
       setError('El nombre del solicitante es obligatorio');
@@ -1411,7 +1454,14 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
             </div>
           }
         >
-          <form ref={formularioRef} onSubmit={handleGuardarDocumento} className="space-y-4">
+          <form
+            ref={formularioRef}
+            onSubmit={(e) => {
+              // Bloquea submit implícito (Enter); el guardado es solo por el botón.
+              e.preventDefault();
+            }}
+            className="space-y-4"
+          >
             <fieldset disabled={soloLectura} className="space-y-4 min-w-0 border-0 p-0 m-0">
               <BloqueFormulario titulo="Datos de la solicitud">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1441,11 +1491,16 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
                     {contratoSel ? (
                       <ItemSeleccionado
                         titulo={contratoSel.no_contrato}
-                        subtitulo={
-                          contratoSel.contratista_nombre
-                            ? `${contratoSel.contratista_nombre} · Lote ${contratoSel.lote}`
-                            : `Lote ${contratoSel.lote}`
-                        }
+                        subtitulo={[
+                          contratoSel.planteles_resumen,
+                          contratoSel.contratista_nombre,
+                          `Lote ${contratoSel.lote}`,
+                          contratoSel.obras_count != null
+                            ? `${contratoSel.obras_count} obra${contratoSel.obras_count === 1 ? '' : 's'}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
                         onQuitar={() => {
                           setContratoSel(null);
                           setContratoBusqueda('');
@@ -1457,7 +1512,7 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
                         <AutocompleteBusqueda
                           value={contratoBusqueda}
                           onChange={setContratoBusqueda}
-                          placeholder="Ej. 1234-5678 — busca en catálogo o crea si no existe"
+                          placeholder="Buscar número completo (ej. 0459-2025)…"
                           abierto={contratoOpciones.length > 0 && !resolviendoContrato}
                           onBlur={confirmarContratoDesdeBusqueda}
                           onKeyDown={(e) => {
@@ -1467,32 +1522,43 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
                             }
                           }}
                         >
-                          {contratoOpciones.map((c) => (
-                            <li key={c.id || c.no_contrato}>
-                              <div
-                                role="option"
-                                aria-selected={false}
-                                tabIndex={0}
-                                className={dropdownItemClass}
-                                onClick={() => {
-                                  void aplicarContratoSeleccionado(c);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault();
+                          {contratoOpciones.map((c) => {
+                            const nObras = c.obras_count ?? 0;
+                            return (
+                              <li key={c.id || `${c.lote}-${c.no_contrato}`}>
+                                <div
+                                  role="option"
+                                  aria-selected={false}
+                                  tabIndex={0}
+                                  className={`${dropdownItemClass} ${nObras === 0 ? 'opacity-60' : ''}`}
+                                  onClick={() => {
                                     void aplicarContratoSeleccionado(c);
-                                  }
-                                }}
-                              >
-                                <span className="block truncate font-mono">{c.no_contrato}</span>
-                                <span className="block text-xs text-slate-400 truncate mt-0.5">
-                                  Lote {c.lote}
-                                  {c.contratista_nombre ? ` · ${c.contratista_nombre}` : ''}
-                                  {!c.id ? ' · desde obras' : ''}
-                                </span>
-                              </div>
-                            </li>
-                          ))}
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      void aplicarContratoSeleccionado(c);
+                                    }
+                                  }}
+                                >
+                                  <span className="block truncate font-mono">{c.no_contrato}</span>
+                                  <span className="block text-xs text-slate-400 truncate mt-0.5">
+                                    {[
+                                      c.planteles_resumen,
+                                      c.contratista_nombre,
+                                      `Lote ${c.lote}`,
+                                      nObras > 0
+                                        ? `${nObras} obra${nObras === 1 ? '' : 's'}`
+                                        : 'sin obras',
+                                      !c.id ? 'desde obras' : null,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(' · ')}
+                                  </span>
+                                </div>
+                              </li>
+                            );
+                          })}
                         </AutocompleteBusqueda>
                         {resolviendoContrato && (
                           <p className="text-[11px] text-slate-500 mt-1.5">Vinculando contrato…</p>
@@ -1656,6 +1722,8 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
                     variant="embedded"
                     contratoId={contratoIdPanel}
                     contrato={contratoPanel}
+                    documentoId={documentoIdPanel}
+                    usuarioActual={nombreUsuarioActual}
                     soloLectura={soloLectura}
                     onError={setError}
                     onAdendasChange={sincronizarAdendasEnFormulario}
@@ -1690,17 +1758,20 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
                       onChange={(v) => setDocForm((p) => ({ ...p, monto_total: v }))}
                     />
                   </div>
-
-                  <div className="space-y-1">
-                    <label className={labelClass}>Observación</label>
-                    <textarea
-                      value={docForm.observacion}
-                      onChange={(e) => setDocForm((p) => ({ ...p, observacion: e.target.value }))}
-                      className={`${inputClass} min-h-[72px] resize-y`}
-                      rows={2}
-                    />
-                  </div>
                 </div>
+              </BloqueFormulario>
+
+              <BloqueFormulario titulo="Comentarios y evidencia">
+                <GestionTecnicaComentariosPanel
+                  documentoId={documentoIdPanel}
+                  usuarioActual={nombreUsuarioActual}
+                  soloLectura={soloLectura}
+                  onError={setError}
+                  permitirPdf
+                  titulo="Comentarios del documento"
+                  descripcionVacio="No hay comentarios del documento."
+                  mensajeSinDocumento="Registre o abra un documento guardado para agregar comentarios y PDF."
+                />
               </BloqueFormulario>
 
               <BloqueFormulario titulo="Contratista">
@@ -1772,9 +1843,12 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
                   Cancelar
                 </button>
                 <button
-                  type="submit"
+                  type="button"
                   disabled={guardando}
                   className={BTN_PRIMARY}
+                  onClick={() => {
+                    void handleGuardarDocumento();
+                  }}
                 >
                   <Save sx={{ fontSize: 18 }} />
                   {guardando ? 'Guardando…' : editandoId ? 'Actualizar documento' : 'Registrar documento'}

@@ -103,6 +103,7 @@ export const REPORTE_OBRAS_AREAS: ReporteAreaDef[] = [
     id: 'snip',
     label: 'SNIP',
     campos: [
+      { key: 'snip', label: 'SNIP', source: 'obra' },
       { key: 'envio_snip', label: 'Envío SNIP', source: 'obra' },
       { key: 'monto_snip', label: 'Monto SNIP', source: 'obra', format: 'currency' },
       { key: 'modificacion_snip', label: 'Modificación SNIP', source: 'obra' },

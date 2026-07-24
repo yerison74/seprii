@@ -731,7 +731,7 @@ const ObrasTable: React.FC<ObrasTableProps> = ({
                 className={`${BTN_SECONDARY} flex items-center gap-2`}
               >
                 <OpenInNew fontSize="small" />
-                Más detalles (trámites, documentos, Techado)
+                Más detalles (contrato, trámites, documentos, Techado)
               </button>
               <div className="flex gap-3">
               {!soloLectura && (

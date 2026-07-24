@@ -40,16 +40,25 @@ interface TabPanelProps {
   value: number;
 }
 
+/** Mantiene el módulo montado tras la primera visita para no perder filtros/búsqueda al cambiar de pestaña. */
 function TabPanel(props: TabPanelProps) {
   const { children, value, index } = props;
+  const activo = value === index;
+  const [visitado, setVisitado] = useState(activo);
 
-  if (value !== index) return null;
+  useEffect(() => {
+    if (activo) setVisitado(true);
+  }, [activo]);
+
+  if (!visitado) return null;
 
   return (
     <div
       role="tabpanel"
       id={`simple-tabpanel-${index}`}
       aria-labelledby={`simple-tab-${index}`}
+      hidden={!activo}
+      className={activo ? undefined : 'hidden'}
     >
       <div className="p-2 sm:p-3 md:p-4 lg:p-6">
         {children}

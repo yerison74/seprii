@@ -34,7 +34,15 @@ const DetalleTramiteDialog: React.FC<DetalleTramiteDialogProps> = ({
   const filasObras: ObraSigedeResumen[] =
     tramite.obras_sigede?.length
       ? tramite.obras_sigede
-      : (tramite.id_sigede || []).map((id) => ({ id_sigede: id, encontrada: false }));
+      : [
+          ...(tramite.id_sigede || []).map((id) => ({ id_sigede: id, encontrada: false })),
+          ...(tramite.obra_ids || []).map((id) => ({
+            id_sigede: id,
+            obra_id: id,
+            tipo_gestion: 'Mantenimiento' as const,
+            encontrada: false,
+          })),
+        ];
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -148,7 +156,7 @@ const DetalleTramiteDialog: React.FC<DetalleTramiteDialogProps> = ({
           </Box>
         </Box>
 
-        {(tramite.obras_sigede?.length || tramite.id_sigede?.length) ? (
+        {(tramite.obras_sigede?.length || tramite.id_sigede?.length || tramite.obra_ids?.length) ? (
           <Box sx={{ mt: 1 }}>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
               Obras relacionadas ({filasObras.length})
@@ -167,7 +175,7 @@ const DetalleTramiteDialog: React.FC<DetalleTramiteDialogProps> = ({
             >
               <Box component="thead" sx={{ bgcolor: 'grey.50' }}>
                 <Box component="tr">
-                  {['SIGEDE', 'Contrato', 'Plantel', 'Provincia'].map((h) => (
+                  {['ID / SIGEDE', 'Contrato', 'Plantel', 'Provincia'].map((h) => (
                     <Box
                       key={h}
                       component="th"
@@ -187,6 +195,7 @@ const DetalleTramiteDialog: React.FC<DetalleTramiteDialogProps> = ({
                   >
                     <Box component="td" sx={{ px: 1.5, py: 1, fontFamily: 'monospace' }}>
                       {fila.id_sigede}
+                      {fila.tipo_gestion === 'Mantenimiento' ? ' · mant.' : ''}
                     </Box>
                     <Box component="td" sx={{ px: 1.5, py: 1 }}>
                       {fila.encontrada ? fila.contrato || '—' : '—'}

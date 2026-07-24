@@ -37,6 +37,7 @@ export type ReporteObrasFiltrosState = {
   ultima_total_cubicado: string;
   total_cubicado_base: string;
   total_pagado: string;
+  snip: string;
   envio_snip: string;
   monto_snip: string;
   modificacion_snip: string;
@@ -154,6 +155,7 @@ export const REPORTE_OBRAS_FILTRO_GRUPOS: ObraFiltroGrupoDef[] = [
   {
     label: 'SNIP',
     campos: [
+      { key: 'snip', label: 'SNIP', tipo: 'text' },
       { key: 'envio_snip', label: 'Envío SNIP', tipo: 'text' },
       { key: 'monto_snip', label: 'Monto SNIP', tipo: 'number' },
       { key: 'modificacion_snip', label: 'Modificación SNIP', tipo: 'text' },
@@ -200,6 +202,7 @@ export const EMPTY_REPORTE_OBRAS_FILTERS: ReporteObrasFiltrosState = {
   ultima_total_cubicado: '',
   total_cubicado_base: '',
   total_pagado: '',
+  snip: '',
   envio_snip: '',
   monto_snip: '',
   modificacion_snip: '',

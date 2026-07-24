@@ -5,10 +5,12 @@
 import * as XLSX from 'xlsx';
 import { XMLParser } from 'fast-xml-parser';
 import { obrasService, contratistasService } from './supabaseService';
+import { contratoObrasService } from './contratoObrasService';
 import { supabase } from '../lib/supabase';
 import { reservarIdsObra } from '../utils/reservarIdObra';
 import { inferirTipoObraGestion } from '../constants/tipoObraGestion';
 import { normalizarCodigoObra } from '../utils/normalizarCodigoObra';
+import { normalizarNoContrato } from '../utils/techadoNormalizar';
 import type { Obra } from '../types/database';
 import {
   mapearRegistroPlantillaObra,
@@ -92,6 +94,65 @@ type ItemCargaObra = {
   tipoObraRaw: string;
   etiquetaError: string;
 };
+
+function claveContratoCarga(lote: number | null | undefined, noContrato: string): string {
+  return `${lote ?? ''}|${normalizarNoContrato(noContrato) ?? ''}`;
+}
+
+function omitirCamposTransitoriosCarga(
+  obra: ObraCargaArchivo,
+): Partial<Omit<Obra, 'id' | 'created_at' | 'updated_at'>> {
+  return Object.fromEntries(
+    Object.entries(obra).filter(([k, v]) => k !== 'lote' && v !== undefined),
+  ) as Partial<Omit<Obra, 'id' | 'created_at' | 'updated_at'>>;
+}
+
+async function precargarContratosParaCarga(items: ItemCargaObra[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const pendientes = new Map<
+    string,
+    { lote?: number | null; no_contrato: string; responsable?: string | null }
+  >();
+
+  for (const it of items) {
+    const num = it.obra.contrato?.trim();
+    if (!num) continue;
+    const norm = normalizarNoContrato(num);
+    if (!norm) continue;
+    const lote = typeof it.obra.lote === 'number' ? it.obra.lote : null;
+    const key = claveContratoCarga(lote, norm);
+    if (!pendientes.has(key)) {
+      pendientes.set(key, { lote, no_contrato: norm, responsable: it.obra.responsable });
+    }
+  }
+
+  for (const [key, p] of Array.from(pendientes.entries())) {
+    const contrato = await contratoObrasService.resolverOCrearContrato({
+      no_contrato: p.no_contrato,
+      lote: p.lote,
+      contratista_nombre: p.responsable,
+      crearSiFalta: true,
+      vincularObras: false,
+    });
+    if (contrato?.id) map.set(key, contrato.id);
+  }
+
+  return map;
+}
+
+function aplicarContratoPrecargado(
+  obra: ObraCargaArchivo,
+  contratosMap: Map<string, string>,
+): ObraCargaArchivo {
+  const num = obra.contrato?.trim();
+  if (!num) return obra;
+  const norm = normalizarNoContrato(num);
+  if (!norm) return obra;
+  const lote = typeof obra.lote === 'number' ? obra.lote : null;
+  const contratoId = contratosMap.get(claveContratoCarga(lote, norm));
+  if (!contratoId) return obra;
+  return { ...obra, contrato_id: contratoId };
+}
 
 async function sincronizarContratistaCarga(
   codigoNormalizado: string,
@@ -180,6 +241,13 @@ async function ejecutarCargaObrasLote(
     }
   }
 
+  emit(0.16, 'Resolviendo contratos por lote y número…');
+  const contratosPrecargados = await precargarContratosParaCarga(itemsUnicos);
+  const itemsConContrato = itemsUnicos.map((it) => ({
+    ...it,
+    obra: aplicarContratoPrecargado(it.obra, contratosPrecargados),
+  }));
+
   const insertsBuffer: Array<Omit<Obra, 'created_at' | 'updated_at'>> = [];
   const pendientesContratista: Array<{
     codigo: string;
@@ -205,17 +273,15 @@ async function ejecutarCargaObrasLote(
     insertsBuffer.length = 0;
   };
 
-  const totalFilas = itemsUnicos.length;
+  const totalFilas = itemsConContrato.length;
   let filaHecha = 0;
-  for (const it of itemsUnicos) {
+  for (const it of itemsConContrato) {
     try {
       const tipo = tipoObraNormalizado(it.tipoObraRaw);
       const { obra, codigoNormalizado, contratista } = it;
 
       if (existing.has(codigoNormalizado)) {
-        const obraParaActualizar = Object.fromEntries(
-          Object.entries(obra).filter(([_, v]) => v !== undefined),
-        ) as Partial<Omit<Obra, 'id' | 'created_at' | 'updated_at'>>;
+        const obraParaActualizar = omitirCamposTransitoriosCarga(obra);
         await obrasService.actualizarObraPorCodigo(codigoNormalizado, obraParaActualizar);
         await sincronizarContratistaCarga(codigoNormalizado, contratista, obra.responsable);
         resultados.actualizadas += 1;
@@ -228,7 +294,7 @@ async function ejecutarCargaObrasLote(
         reservedIdx.set(tipo, idx + 1);
         const nuevoId = idsList[idx];
         const obraParaCrear = {
-          ...Object.fromEntries(Object.entries(obra).filter(([_, v]) => v !== undefined)),
+          ...omitirCamposTransitoriosCarga(obra),
           id: nuevoId,
           codigo: codigoNormalizado,
           tipo_obra: tipo,
@@ -236,6 +302,7 @@ async function ejecutarCargaObrasLote(
             codigo: codigoNormalizado,
             distrito_minerd_sigede: obra.distrito_minerd_sigede,
             contrato: obra.contrato,
+            contrato_id: obra.contrato_id,
           }),
         } as Omit<Obra, 'created_at' | 'updated_at'>;
         insertsBuffer.push(obraParaCrear);

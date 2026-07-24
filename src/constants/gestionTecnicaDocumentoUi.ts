@@ -6,6 +6,8 @@ import {
   SEPRI_INSET,
   SEPRI_BADGE,
   SEPRI_FIELD_SHADOW,
+  SEPRI_LIST_ITEM,
+  SEPRI_LIST_ITEM_ACTIVE,
 } from './sepriSurfaces';
 
 export {
@@ -14,6 +16,8 @@ export {
   SEPRI_INSET,
   SEPRI_BADGE,
   SEPRI_FIELD_SHADOW,
+  SEPRI_LIST_ITEM,
+  SEPRI_LIST_ITEM_ACTIVE,
 } from './sepriSurfaces';
 
 export const GT_PAGE =

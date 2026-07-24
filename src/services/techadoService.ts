@@ -13,6 +13,7 @@ import type {
 } from '../types/database';
 import type { FilaMatrizTechadoParseada } from '../utils/parsearMatrizTechadoExcel';
 import { normalizarNoContrato, normalizarRegDist } from '../utils/techadoNormalizar';
+import { contratoObrasService } from './contratoObrasService';
 import { buscarObraIdParaMatriz, type MatrizMatchInput, type ObraMatchCandidata } from '../utils/techadoObraMatch';
 import { obrasService } from './supabaseService';
 import { TIPO_OBRA_TECHADOS, esTipoObraTechados } from '../constants/tipoObra';
@@ -313,17 +314,24 @@ export const techadoService = {
       query = query.ilike('estatus', filtros.estatus.trim());
     }
     if (filtros.search?.trim()) {
-      const p = `%${filtros.search.trim()}%`;
-      query = query.or(
-        [
-          `plantel.ilike.${p}`,
-          `no_contrato.ilike.${p}`,
-          `provincia.ilike.${p}`,
-          `municipio.ilike.${p}`,
-          `reg_dist.ilike.${p}`,
-          `contratista_nombre.ilike.${p}`,
-        ].join(','),
-      );
+      const term = filtros.search.trim();
+      const p = `%${term}%`;
+      const contratoIds = await contratoObrasService.buscarContratoIdsPorTermino(term);
+      if (contratoIds.length > 0 && contratoIds.length <= 40) {
+        query = query.in('contrato_id', contratoIds);
+      } else {
+        query = query.or(
+          [
+            `plantel.ilike.${p}`,
+            `no_contrato.ilike.${p}`,
+            `provincia.ilike.${p}`,
+            `municipio.ilike.${p}`,
+            `reg_dist.ilike.${p}`,
+            `contratista_nombre.ilike.${p}`,
+            `contrato_id.ilike.${p}`,
+          ].join(','),
+        );
+      }
     }
 
     query = query.order('lote', { ascending: true }).order('plantel', { ascending: true });

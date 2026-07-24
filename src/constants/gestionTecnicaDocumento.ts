@@ -3,6 +3,9 @@ export const TIPOS_ADENDA = [
   'Equilibrio economico',
   'Reformulacion de presupuesto',
   'Extencion de vigencia',
+  'Presupuesto de terminación',
+  'Sustitución de partida y partida nueva',
+  'Aumento de volumen (25%)',
 ] as const;
 
 export type TipoAdenda = (typeof TIPOS_ADENDA)[number];

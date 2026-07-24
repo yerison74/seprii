@@ -1,9 +1,15 @@
-/** Normaliza No. CONTRATO al formato xxxx-xxxx usado en obras.contrato */
+/**
+ * Normaliza No. CONTRATO a los formatos usados en catálogo/obras:
+ * - xxxx-yy (ej. 0498-22)
+ * - xxxx-yyyy (ej. 0498-2023)
+ * Extrae dígitos si el valor trae texto ("No. 0498-22") o va sin guion ("049822").
+ */
 export function normalizarNoContrato(raw: string | number | null | undefined): string {
   if (raw == null || raw === '') return '';
   const s = String(raw).trim();
-  if (/^\d{4}-\d{4}$/.test(s)) return s;
+  if (/^\d{4}-\d{2}$/.test(s) || /^\d{4}-\d{4}$/.test(s)) return s;
   const digits = s.replace(/\D/g, '');
+  if (digits.length === 6) return `${digits.slice(0, 4)}-${digits.slice(4, 6)}`;
   if (digits.length >= 8) return `${digits.slice(0, 4)}-${digits.slice(4, 8)}`;
   return s;
 }

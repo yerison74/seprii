@@ -63,6 +63,7 @@ export interface Obra {
   ultima_total_cubicado?: number | null;
   total_cubicado_base?: number | null;
   total_pagado?: number | null;
+  snip?: string | null;
   envio_snip?: string | null;
   monto_snip?: number | null;
   modificacion_snip?: string | null;
@@ -111,13 +112,28 @@ export type EstadoAdenda = 'en_curso' | 'anterior';
 export interface Adenda {
   id: string;
   contrato_id: string;
-  numero_adenda: string;
+  obra_id?: string | null;
+  numero_adenda?: string | null;
   tipo_adenda?: string | null;
   monto?: number | null;
   estado: EstadoAdenda;
   created_at?: string | null;
   updated_at?: string | null;
   contrato?: Pick<ContratoTechado, 'id' | 'lote' | 'no_contrato'> | null;
+  obra?: Pick<Obra, 'id' | 'nombre' | 'codigo' | 'tipo' | 'contrato_id'> | null;
+}
+
+/** Comentario / evidencia de documento técnico o de una adenda. */
+export interface DocumentoTecnicoComentario {
+  id: string;
+  documento_id: string;
+  /** Si es null, el comentario es del documento; si tiene valor, es de esa adenda. */
+  adenda_id?: string | null;
+  comentario: string;
+  usuario: string;
+  archivo_pdf?: string | null;
+  nombre_archivo?: string | null;
+  created_at?: string | null;
 }
 
 /** Datos de obra mostrados al vincular obras a un documento técnico. */
@@ -138,12 +154,17 @@ export interface ObraSigedeResumen {
 
 /** Resultado de búsqueda de obra para vincular a un trámite. */
 export interface ObraTramiteOpcion {
+  /** Id interno de la obra (OB-xxxx / MT-xxxx). */
+  id: string;
+  /** Código SIGEDE si existe; vacío en mantenimiento. */
   sigede: string;
   nombre: string;
   contrato?: string | null;
   responsable?: string | null;
   provincia?: string | null;
   municipio?: string | null;
+  /** true si la obra se vincula por id (sin SIGEDE). */
+  sinSigede?: boolean;
 }
 
 export interface BuscarObrasTramiteResult {
@@ -179,6 +200,17 @@ export interface ObraRelacionesSigede {
   tramites: TramiteObraResumen[];
   documentos: DocumentoObraResumen[];
   techado?: ObraMatrizTechadoResumen[];
+  /** Catálogo Techado del contrato vinculado a la obra. */
+  contrato?: Pick<ContratoTechado, 'id' | 'lote' | 'no_contrato' | 'contratista_nombre'> | null;
+  /** Adendas de gestión técnica del contrato. */
+  adendas?: Adenda[];
+  /** Otras obras del mismo contrato. */
+  obrasContrato?: Array<{
+    id: string;
+    nombre: string;
+    codigo?: string | null;
+    tipo?: string | null;
+  }>;
 }
 
 /** Opción de búsqueda para editar una obra en Carga de archivos. */
@@ -243,6 +275,8 @@ export interface Tramite {
   updated_at?: string | null;
   /** Obras SIGEDE vinculadas al trámite. */
   id_sigede?: string[];
+  /** Obras sin SIGEDE (mantenimiento) vinculadas por id interno. */
+  obra_ids?: string[];
   obras_sigede?: ObraSigedeResumen[];
 }
 
@@ -379,6 +413,7 @@ export interface ObrasFilters {
   ultima_total_cubicado?: string;
   total_cubicado_base?: string;
   total_pagado?: string;
+  snip?: string;
   envio_snip?: string;
   monto_snip?: string;
   modificacion_snip?: string;
@@ -477,6 +512,10 @@ export interface ContratoTechado {
   observaciones?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  /** Solo en búsquedas UI: planteles vinculados (no persistido). */
+  planteles_resumen?: string | null;
+  /** Solo en búsquedas UI: cantidad de obras vinculadas. */
+  obras_count?: number | null;
 }
 
 export interface ContratoAdendaTechado {

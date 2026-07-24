@@ -30,6 +30,7 @@ export interface NuevoTramiteForm {
   proceso: string;
   archivo_pdf: File | null;
   id_sigede: string[];
+  obra_ids: string[];
 }
 
 interface NuevoTramiteDialogProps {
@@ -72,6 +73,7 @@ const NuevoTramiteDialog: React.FC<NuevoTramiteDialogProps> = ({
       proceso: '',
       archivo_pdf: null,
       id_sigede: [],
+      obra_ids: [],
     }));
     setObrasResumen([]);
     if (fileInputRef.current) {
@@ -161,7 +163,14 @@ const NuevoTramiteDialog: React.FC<NuevoTramiteDialogProps> = ({
           </FormControl>
           <TramiteObrasBuscador
             idSigede={nuevoTramite.id_sigede}
-            onChange={(ids) => setNuevoTramite((prev) => ({ ...prev, id_sigede: ids }))}
+            obraIds={nuevoTramite.obra_ids}
+            onChange={(next) =>
+              setNuevoTramite((prev) => ({
+                ...prev,
+                id_sigede: next.id_sigede,
+                obra_ids: next.obra_ids,
+              }))
+            }
             obrasResumen={obrasResumen}
             onResumenChange={setObrasResumen}
           />

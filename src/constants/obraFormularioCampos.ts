@@ -101,6 +101,7 @@ export const OBRAS_FORM_AREAS: ObraFormAreaDef[] = [
     id: 'snip',
     label: 'SNIP',
     campos: [
+      { key: 'snip', label: 'SNIP', source: 'obra', input: 'text', maxLength: 100 },
       { key: 'envio_snip', label: 'Envío SNIP', source: 'obra', input: 'text', maxLength: 100 },
       { key: 'monto_snip', label: 'Monto SNIP', source: 'obra', input: 'decimal' },
       { key: 'modificacion_snip', label: 'Modificación SNIP', source: 'obra', input: 'text', maxLength: 100 },

@@ -18,6 +18,7 @@ export const PLANTILLA_OBRAS_COLUMNAS: PlantillaColumnaDef[] = [
   // PLANTEL
   { grupo: 'PLANTEL', key: 'codigo', label: 'Código', ejemplo: '0001-0001', ancho: 14 },
   { grupo: 'PLANTEL', key: 'contrato', label: 'Contrato', ejemplo: '1234-5678', ancho: 12 },
+  { grupo: 'PLANTEL', key: 'lote', label: 'Lote', ejemplo: 1, ancho: 8 },
   { grupo: 'PLANTEL', key: 'nombre', label: 'Nombre', ejemplo: 'Nombre de la obra', ancho: 32 },
   { grupo: 'PLANTEL', key: 'nombre_inaugurado', label: 'Nombre inaugurado', ejemplo: 'Nombre tras inauguración', ancho: 32 },
   { grupo: 'PLANTEL', key: 'tipo_obra', label: 'Tipo obra', ejemplo: 'Techados', ancho: 14 },
@@ -61,6 +62,7 @@ export const PLANTILLA_OBRAS_COLUMNAS: PlantillaColumnaDef[] = [
   { grupo: 'TIEMPOS', key: 'fecha_fin_estimada', label: 'Fecha fin estimada', ejemplo: '2024-12-31', ancho: 16 },
   { grupo: 'TIEMPOS', key: 'fecha_inauguracion', label: 'Fecha inauguración', ejemplo: '2025-06-01', ancho: 16 },
   // SNIP
+  { grupo: 'SNIP', key: 'snip', label: 'SNIP', ejemplo: 'SNIP-12345', ancho: 14 },
   { grupo: 'SNIP', key: 'envio_snip', label: 'Envío SNIP', ejemplo: 'ENV-2024-01', ancho: 16 },
   { grupo: 'SNIP', key: 'monto_snip', label: 'Monto SNIP', ejemplo: 12000000, ancho: 14 },
   { grupo: 'SNIP', key: 'modificacion_snip', label: 'Modificación SNIP', ejemplo: 'MOD-001', ancho: 16 },

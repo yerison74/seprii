@@ -258,7 +258,7 @@ export function documentoAFilaExport(doc: DocumentoTecnicoObra): string[] {
 export function adendaAFilaExport(adenda: Adenda): string[] {
   return [
     adenda.contrato?.no_contrato || '',
-    adenda.numero_adenda,
+    adenda.numero_adenda || '',
     adenda.tipo_adenda || '',
     adenda.monto != null ? String(adenda.monto) : '',
     adenda.estado,

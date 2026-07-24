@@ -236,6 +236,7 @@ CREATE TABLE IF NOT EXISTS public.obras (
   ultima_total_cubicado       numeric(18, 2),
   total_cubicado_base         numeric(18, 2),
   total_pagado                numeric(18, 2),
+  snip                        varchar(100),
   envio_snip                  varchar(100),
   monto_snip                  numeric(18, 2),
   modificacion_snip           varchar(100),
@@ -269,6 +270,7 @@ ALTER TABLE public.obras
   ADD COLUMN IF NOT EXISTS total_cubicado_base numeric(18, 2),
   ADD COLUMN IF NOT EXISTS total_pagado numeric(18, 2),
   ADD COLUMN IF NOT EXISTS fecha_detenida date,
+  ADD COLUMN IF NOT EXISTS snip varchar(100),
   ADD COLUMN IF NOT EXISTS envio_snip varchar(100),
   ADD COLUMN IF NOT EXISTS monto_snip numeric(18, 2),
   ADD COLUMN IF NOT EXISTS modificacion_snip varchar(100);
@@ -375,14 +377,18 @@ CREATE TABLE IF NOT EXISTS public.tramites (
   fecha_creacion      timestamptz DEFAULT now(),
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now(),
-  id_sigede           text[] NOT NULL DEFAULT '{}'
+  id_sigede           text[] NOT NULL DEFAULT '{}',
+  obra_ids            text[] NOT NULL DEFAULT '{}'
 );
 
 ALTER TABLE public.tramites ADD COLUMN IF NOT EXISTS proceso text;
 ALTER TABLE public.tramites ADD COLUMN IF NOT EXISTS id_sigede text[] NOT NULL DEFAULT '{}';
+ALTER TABLE public.tramites ADD COLUMN IF NOT EXISTS obra_ids text[] NOT NULL DEFAULT '{}';
 
 COMMENT ON COLUMN public.tramites.id_sigede IS
   'Códigos SIGEDE (codigo o distrito_minerd_sigede) de obras vinculadas al trámite.';
+COMMENT ON COLUMN public.tramites.obra_ids IS
+  'Ids internos de obras sin SIGEDE (MT-xxxx / OB-xxxx) vinculadas al trámite.';
 
 CREATE TABLE IF NOT EXISTS public.movimientos_tramites (
   id                bigserial PRIMARY KEY,
@@ -725,7 +731,7 @@ CREATE TABLE IF NOT EXISTS public.contrato_adenda (
 CREATE TABLE IF NOT EXISTS public.adenda (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   contrato_id   text NOT NULL REFERENCES public.contrato(id) ON DELETE CASCADE,
-  numero_adenda varchar(12) NOT NULL,
+  numero_adenda varchar(12),
   tipo_adenda   varchar(120),
   monto         numeric(18, 2),
   estado        varchar(20) NOT NULL DEFAULT 'en_curso'
@@ -734,6 +740,35 @@ CREATE TABLE IF NOT EXISTS public.adenda (
   updated_at    timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT adenda_contrato_numero_unique UNIQUE (contrato_id, numero_adenda)
 );
+
+ALTER TABLE public.adenda
+  ADD COLUMN IF NOT EXISTS obra_id text REFERENCES public.obras(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_adenda_obra_id
+  ON public.adenda(obra_id) WHERE obra_id IS NOT NULL;
+
+-- Comentarios / evidencia PDF (documento o adenda)
+CREATE TABLE IF NOT EXISTS public.documento_tecnico_comentario (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  documento_id   uuid NOT NULL
+                   REFERENCES public.documentos_tecnicos_obra(id) ON DELETE CASCADE,
+  adenda_id      uuid
+                   REFERENCES public.adenda(id) ON DELETE CASCADE,
+  comentario     text NOT NULL,
+  usuario        text NOT NULL,
+  archivo_pdf    text,
+  nombre_archivo text,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT documento_tecnico_comentario_texto_chk
+    CHECK (length(trim(comentario)) > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gt_comentario_documento
+  ON public.documento_tecnico_comentario(documento_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_gt_comentario_adenda
+  ON public.documento_tecnico_comentario(adenda_id, created_at DESC)
+  WHERE adenda_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS public.matriz_general (
   id                              text PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -1046,19 +1081,42 @@ WITH duplicados AS (
 )
 DELETE FROM public.obras WHERE id IN (SELECT id FROM duplicados);
 
-DROP INDEX IF EXISTS idx_obras_codigo_unique;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relkind = 'i'
+      AND n.nspname = 'public'
+      AND c.relname = 'idx_obras_codigo_unique'
+  ) THEN
+    CREATE UNIQUE INDEX idx_obras_codigo_unique
+      ON public.obras (codigo)
+      WHERE codigo IS NOT NULL AND trim(codigo) <> '';
+  END IF;
+END $$;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_obras_codigo_unique
-  ON public.obras (codigo)
-  WHERE codigo IS NOT NULL AND trim(codigo) <> '';
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_obras_mantenimiento_contrato_nombre
-  ON public.obras (contrato_id, lower(trim(nombre)))
-  WHERE tipo = 'Mantenimiento'
-    AND contrato_id IS NOT NULL
-    AND trim(nombre) <> '';
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relkind = 'i'
+      AND n.nspname = 'public'
+      AND c.relname = 'idx_obras_mantenimiento_contrato_nombre'
+  ) THEN
+    CREATE UNIQUE INDEX idx_obras_mantenimiento_contrato_nombre
+      ON public.obras (contrato_id, lower(trim(nombre)))
+      WHERE tipo = 'Mantenimiento'
+        AND contrato_id IS NOT NULL
+        AND trim(nombre) <> '';
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_tramites_id_sigede_gin ON public.tramites USING gin (id_sigede);
+CREATE INDEX IF NOT EXISTS idx_tramites_obra_ids_gin ON public.tramites USING gin (obra_ids);
 CREATE INDEX IF NOT EXISTS idx_doc_tecnicos_id_sigede_gin
   ON public.documentos_tecnicos_obra USING gin (id_sigede);
 CREATE INDEX IF NOT EXISTS idx_doc_tecnicos_obra_ids_gin
@@ -1112,7 +1170,7 @@ BEGIN
     'usuarios_app', 'area', 'contratistas', 'historial_estados',
     'tiempo_en_area', 'notificaciones_tiempo', 'notificacion_leida',
     'documentos_tecnicos_obra', 'movimiento_documentos_tecnicos_obra',
-    'contrato', 'contrato_adenda', 'adenda', 'matriz_general',
+    'contrato', 'contrato_adenda', 'adenda', 'documento_tecnico_comentario', 'matriz_general',
     'contratista_access_tokens', 'formulario_contratista',
     'movimientos_solicitud_contratista'
   ]

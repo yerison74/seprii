@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
-import { obrasService, historialUploadsService, storageService, tramitesService, notificacionesTiempoService, areasService, formularioContratistaService, documentosTecnicosService, contratistasService, adendaService } from './supabaseService';
+import { obrasService, historialUploadsService, storageService, tramitesService, notificacionesTiempoService, areasService, formularioContratistaService, documentosTecnicosService, contratistasService, adendaService, documentoTecnicoComentarioService } from './supabaseService';
 import { techadoService } from './techadoService';
 import { getDiasMaximosPorArea } from '../constants/procesos';
 import { mensajeNotificacionTiempo } from '../utils/notificacionesTiempo';
@@ -111,16 +111,16 @@ export const mantenimientosAPI = {
     }
   },
 
-  obtenerRelacionesObraPorSigede: async (sigedes: string[], obraId?: string) => {
+  obtenerRelacionesObraPorSigede: async (
+    obra: Pick<
+      import('../types/database').Obra,
+      'id' | 'codigo' | 'distrito_minerd_sigede' | 'contrato_id' | 'contrato'
+    >,
+  ) => {
     try {
-      const [relaciones, techado] = await Promise.all([
-        obrasService.obtenerRelacionesPorSigede(sigedes),
-        obraId?.trim()
-          ? techadoService.obtenerResumenPorObraId(obraId.trim())
-          : Promise.resolve([]),
-      ]);
+      const data = await obrasService.obtenerRelacionesObra(obra);
       return {
-        data: { data: { ...relaciones, techado } },
+        data: { data },
       } as AxiosResponse<{
         data: import('../types/database').ObraRelacionesSigede;
       }>;
@@ -420,7 +420,7 @@ export const gestionTecnicaDocumentoAPI = {
     }
   },
 
-  buscarContratos: async (search: string, limit = 8) => {
+  buscarContratos: async (search: string, limit = 25) => {
     try {
       const data = await adendaService.buscarContratos(search, limit);
       return { data: { data } } as AxiosResponse<{ data: import('../types/database').ContratoTechado[] }>;
@@ -428,6 +428,25 @@ export const gestionTecnicaDocumentoAPI = {
       throw {
         response: {
           data: { error: error.message || 'Error al buscar contratos' },
+          status: 500,
+        },
+      };
+    }
+  },
+
+  obrasPorContrato: async (contratoId: string, noContrato?: string | null) => {
+    try {
+      const data = await adendaService.obtenerObrasParaDocumentoPorContrato(
+        contratoId,
+        noContrato,
+      );
+      return { data: { data } } as AxiosResponse<{
+        data: { id_sigede: string[]; obra_ids: string[] };
+      }>;
+    } catch (error: any) {
+      throw {
+        response: {
+          data: { error: error.message || 'Error al cargar obras del contrato' },
           status: 500,
         },
       };
@@ -450,10 +469,13 @@ export const gestionTecnicaDocumentoAPI = {
 
   resolverContratoDesdeObras: async (noContrato: string, contratistaNombre?: string | null) => {
     try {
+      const norm = String(noContrato || '').trim();
+      // Solo crear en catálogo si el número tiene formato completo (evita huérfanos tipo "0459").
+      const formatoCompleto = /^\d{4}-\d{2}$/.test(norm) || /^\d{4}-\d{4}$/.test(norm);
       const data = await adendaService.resolverOCrearContrato({
         no_contrato: noContrato,
         contratista_nombre: contratistaNombre,
-        crearSiFalta: true,
+        crearSiFalta: formatoCompleto,
       });
       return { data: { data } } as AxiosResponse<{ data: import('../types/database').ContratoTechado | null }>;
     } catch (error: any) {
@@ -483,7 +505,8 @@ export const gestionTecnicaDocumentoAPI = {
   guardarAdenda: async (
     payload: {
       contrato_id: string;
-      numero_adenda: string;
+      obra_id?: string | null;
+      numero_adenda?: string | null;
       tipo_adenda?: string | null;
       monto?: number | string | null;
       estado: import('../types/database').EstadoAdenda;
@@ -513,6 +536,61 @@ export const gestionTecnicaDocumentoAPI = {
       throw {
         response: {
           data: { error: error.message || 'Error al eliminar adenda' },
+          status: 500,
+        },
+      };
+    }
+  },
+
+  listarComentariosDocumento: async (
+    documentoId: string,
+    opciones?: { adendaId?: string | null; soloDocumento?: boolean },
+  ) => {
+    try {
+      const data = await documentoTecnicoComentarioService.listarPorDocumento(documentoId, opciones);
+      return {
+        data: { data },
+      } as AxiosResponse<{ data: import('../types/database').DocumentoTecnicoComentario[] }>;
+    } catch (error: any) {
+      throw {
+        response: {
+          data: { error: error.message || 'Error al listar comentarios' },
+          status: 500,
+        },
+      };
+    }
+  },
+
+  crearComentarioDocumento: async (payload: {
+    documento_id: string;
+    adenda_id?: string | null;
+    comentario: string;
+    usuario: string;
+    archivo?: File | null;
+  }) => {
+    try {
+      const data = await documentoTecnicoComentarioService.crear(payload);
+      return {
+        data: { data },
+      } as AxiosResponse<{ data: import('../types/database').DocumentoTecnicoComentario }>;
+    } catch (error: any) {
+      throw {
+        response: {
+          data: { error: error.message || 'Error al registrar comentario' },
+          status: 500,
+        },
+      };
+    }
+  },
+
+  eliminarComentarioDocumento: async (id: string) => {
+    try {
+      await documentoTecnicoComentarioService.eliminar(id);
+      return { data: { ok: true } };
+    } catch (error: any) {
+      throw {
+        response: {
+          data: { error: error.message || 'Error al eliminar comentario' },
           status: 500,
         },
       };
@@ -654,9 +732,13 @@ export const uploadAPI = {
     }
   },
 
-  buscarObrasParaEdicion: async (search: string, limit = 10) => {
+  buscarObrasParaEdicion: async (
+    search: string,
+    limit = 10,
+    opciones?: { contratoId?: string | null },
+  ) => {
     try {
-      const data = await obrasService.buscarObrasParaEdicion(search, limit);
+      const data = await obrasService.buscarObrasParaEdicion(search, limit, opciones);
       return { data: { data } } as AxiosResponse<{
         data: import('../types/database').ObraEdicionOpcion[];
       }>;
@@ -934,14 +1016,16 @@ export const tramitesAPI = {
     codigo_area?: string;
     id_fijo?: string;
     id_sigede?: string[];
+    obra_ids?: string[];
   }) => {
     try {
       const prefijo = tramite.codigo_area || 'TR';
       // Si se pasa id_fijo (desde contratista), usarlo directamente
       const sufijo = (Date.now() % 1000000).toString().padStart(6, '0');
       const id = tramite.id_fijo || `${prefijo}-${sufijo}`;
-      const { codigo_area: _, id_fijo: __, id_sigede, ...resto } = tramite;
+      const { codigo_area: _, id_fijo: __, id_sigede, obra_ids, ...resto } = tramite;
       const sigedes = (id_sigede || []).map((s) => s.trim()).filter(Boolean);
+      const obraIds = (obra_ids || []).map((s) => s.trim()).filter(Boolean);
       const data = await tramitesService.crearTramite({
         ...resto,
         id,
@@ -949,6 +1033,7 @@ export const tramitesAPI = {
         codigo_barras: `${Date.now()}`,
         proceso: tramite.proceso ?? undefined,
         id_sigede: sigedes,
+        obra_ids: obraIds,
       });
       return { data: { data } } as AxiosResponse<{ data: Tramite }>;
     } catch (error: any) {
@@ -981,6 +1066,18 @@ export const tramitesAPI = {
           }
         } catch {
           id_sigede = [];
+        }
+      }
+      const obraIdsRaw = formData.get('obra_ids') as string | null;
+      let obra_ids: string[] = [];
+      if (obraIdsRaw) {
+        try {
+          const parsed = JSON.parse(obraIdsRaw);
+          if (Array.isArray(parsed)) {
+            obra_ids = parsed.map(String).map((s) => s.trim()).filter(Boolean);
+          }
+        } catch {
+          obra_ids = [];
         }
       }
 
@@ -1021,6 +1118,7 @@ export const tramitesAPI = {
         archivo_pdf: archivoPdfUrl,
         nombre_archivo: archivoPdf.name,
         id_sigede,
+        obra_ids,
       });
 
       return { data: { data } } as AxiosResponse<{ data: Tramite }>;

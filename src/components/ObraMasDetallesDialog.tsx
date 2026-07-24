@@ -1,10 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Close, Description, FollowTheSigns, Info } from '@mui/icons-material';
+import { Close, Description, FollowTheSigns, Info, Business } from '@mui/icons-material';
 import { mantenimientosAPI, Obra } from '../services/api';
 import type { ObraRelacionesSigede } from '../types/database';
 import { sigedesDeObra } from '../utils/obraSigede';
 import { getEstadoLabel } from '../utils/estadoTramite';
-import { BTN_PRIMARY, BTN_SECONDARY } from '../constants/buttonStyles';
+import { BTN_PRIMARY } from '../constants/buttonStyles';
+import {
+  esTipoObraGestionMantenimiento,
+  ETIQUETA_OBRA_GESTION_MANTENIMIENTO,
+  CLASE_ETIQUETA_OBRA_GESTION_MANTENIMIENTO,
+} from '../constants/tipoObraGestion';
 import ObraTechadoResumenSection from './ObraTechadoResumenSection';
 
 interface ObraMasDetallesDialogProps {
@@ -47,19 +52,28 @@ const ObraMasDetallesDialog: React.FC<ObraMasDetallesDialogProps> = ({ open, onC
       return;
     }
 
-    const sigedes = sigedesDeObra(obra);
-
     let cancelado = false;
     (async () => {
       setLoading(true);
       setError(null);
       try {
-        const resp = await mantenimientosAPI.obtenerRelacionesObraPorSigede(sigedes, obra.id);
+        const resp = await mantenimientosAPI.obtenerRelacionesObraPorSigede({
+          id: obra.id,
+          codigo: obra.codigo,
+          distrito_minerd_sigede: obra.distrito_minerd_sigede,
+          contrato_id: obra.contrato_id,
+          contrato: obra.contrato,
+        });
         if (!cancelado) setRelaciones(resp.data.data);
       } catch (err: any) {
         if (!cancelado) {
           setError(err.response?.data?.error || 'No se pudieron cargar las relaciones');
-          setRelaciones({ sigedes, tramites: [], documentos: [], techado: [] });
+          setRelaciones({
+            sigedes: sigedesDeObra(obra),
+            tramites: [],
+            documentos: [],
+            techado: [],
+          });
         }
       } finally {
         if (!cancelado) setLoading(false);
@@ -74,7 +88,11 @@ const ObraMasDetallesDialog: React.FC<ObraMasDetallesDialogProps> = ({ open, onC
   if (!open || !obra) return null;
 
   const sigedes = sigedesDeObra(obra);
+  const esMantenimiento = esTipoObraGestionMantenimiento(obra.tipo);
   const contratista = obra.contratista;
+  const contratoCatalogo = relaciones?.contrato;
+  const numeroContrato =
+    contratoCatalogo?.no_contrato || obra.contrato_ref?.no_contrato || obra.contrato || null;
 
   return (
     <div
@@ -87,13 +105,23 @@ const ObraMasDetallesDialog: React.FC<ObraMasDetallesDialogProps> = ({ open, onC
       >
         <div className="p-5 border-b border-gray-200 flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h3 className="text-xl font-semibold text-gray-800">Resumen por ID SIGEDE</h3>
+            <h3 className="text-xl font-semibold text-gray-800">
+              {esMantenimiento ? 'Detalle de obra — Mantenimiento' : 'Detalle de obra'}
+            </h3>
             <p className="text-sm text-gray-500 mt-1 truncate">{obra.nombre}</p>
-            {sigedes.length > 0 && (
-              <p className="text-xs text-[#42A5F5] font-mono mt-1">
-                SIGEDE: {sigedes.join(' · ')}
-              </p>
-            )}
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <span className="text-xs font-mono text-stone-600">{obra.id}</span>
+              {esMantenimiento && (
+                <span className={CLASE_ETIQUETA_OBRA_GESTION_MANTENIMIENTO}>
+                  {ETIQUETA_OBRA_GESTION_MANTENIMIENTO}
+                </span>
+              )}
+              {sigedes.length > 0 && (
+                <span className="text-xs text-[#42A5F5] font-mono">
+                  SIGEDE: {sigedes.join(' · ')}
+                </span>
+              )}
+            </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
             <Close />
@@ -101,23 +129,46 @@ const ObraMasDetallesDialog: React.FC<ObraMasDetallesDialogProps> = ({ open, onC
         </div>
 
         <div className="p-5 overflow-y-auto flex-1 space-y-6">
-          {sigedes.length === 0 && (
+          {esMantenimiento && !obra.contrato_id && !obra.contrato && (
             <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">
-              Esta obra no tiene código SIGEDE ni distrito MINERD registrado. Aun así se muestra
-              información de Techado u otros módulos si existe vinculación por ID de obra.
+              Obra de mantenimiento sin contrato vinculado. Asigne un contrato para ver documentos,
+              adendas y otras obras del mismo contrato.
             </div>
+          )}
+
+          {(numeroContrato || contratoCatalogo) && (
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <Business fontSize="small" className="text-gray-500" />
+                <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                  Contrato
+                </h4>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-sky-50/60 rounded-lg border border-sky-100">
+                <CampoDetalle label="Número de contrato" value={numeroContrato} />
+                <CampoDetalle
+                  label="Lote"
+                  value={contratoCatalogo?.lote != null ? contratoCatalogo.lote : null}
+                />
+                <CampoDetalle
+                  label="Contratista (catálogo)"
+                  value={contratoCatalogo?.contratista_nombre}
+                />
+              </div>
+            </section>
           )}
 
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Info fontSize="small" className="text-gray-500" />
               <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-                Información adicional
+                Información de la obra
               </h4>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
-              <CampoDetalle label="Contrato" value={obra.contrato} />
+              <CampoDetalle label="Contrato (obra)" value={obra.contrato} />
               <CampoDetalle label="Tipo de obra" value={obra.tipo_obra} />
+              <CampoDetalle label="Clasificación" value={obra.tipo} />
               <CampoDetalle label="Nombre inaugurado" value={obra.nombre_inaugurado} />
               <CampoDetalle label="Sorteo" value={obra.sorteo} />
               <CampoDetalle label="Área construcción" value={obra.area_construccion} />
@@ -125,9 +176,7 @@ const ObraMasDetallesDialog: React.FC<ObraMasDetallesDialogProps> = ({ open, onC
               <CampoDetalle label="Supervisor" value={obra.supervisor} />
               <CampoDetalle
                 label="% ejecutado"
-                value={
-                  obra.porcentaje_ejecutado != null ? `${obra.porcentaje_ejecutado}%` : null
-                }
+                value={obra.porcentaje_ejecutado != null ? `${obra.porcentaje_ejecutado}%` : null}
               />
               <CampoDetalle label="Presupuesto total" value={formatearMonto(obra.presupuesto_total)} />
               <CampoDetalle label="Avance inicial" value={formatearMonto(obra.avance_inicial)} />
@@ -139,6 +188,7 @@ const ObraMasDetallesDialog: React.FC<ObraMasDetallesDialogProps> = ({ open, onC
                 label="Total última cubicación"
                 value={formatearMonto(obra.total_ultima_cubicacion)}
               />
+              <CampoDetalle label="SNIP" value={obra.snip} />
               <CampoDetalle label="Envío SNIP" value={obra.envio_snip} />
               <CampoDetalle label="Monto SNIP" value={formatearMonto(obra.monto_snip)} />
               <CampoDetalle label="Modificación SNIP" value={obra.modificacion_snip} />
@@ -166,11 +216,77 @@ const ObraMasDetallesDialog: React.FC<ObraMasDetallesDialogProps> = ({ open, onC
             </div>
           )}
 
+          {!loading && relaciones?.obrasContrato && relaciones.obrasContrato.length > 0 && (
+            <section>
+              <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+                Otras obras del contrato ({relaciones.obrasContrato.length})
+              </h4>
+              <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">ID</th>
+                      <th className="px-3 py-2 font-semibold">SIGEDE</th>
+                      <th className="px-3 py-2 font-semibold">Nombre</th>
+                      <th className="px-3 py-2 font-semibold">Tipo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {relaciones.obrasContrato.map((o) => (
+                      <tr key={o.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 font-mono text-stone-700">{o.id}</td>
+                        <td className="px-3 py-2">{o.codigo || '—'}</td>
+                        <td className="px-3 py-2">{o.nombre}</td>
+                        <td className="px-3 py-2">{o.tipo || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {!loading && relaciones?.adendas && relaciones.adendas.length > 0 && (
+            <section>
+              <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+                Adendas del contrato ({relaciones.adendas.length})
+              </h4>
+              <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Número</th>
+                      <th className="px-3 py-2 font-semibold">Tipo</th>
+                      <th className="px-3 py-2 font-semibold">Obra</th>
+                      <th className="px-3 py-2 font-semibold">Monto</th>
+                      <th className="px-3 py-2 font-semibold">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {relaciones.adendas.map((a) => (
+                      <tr key={a.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 font-mono">{a.numero_adenda}</td>
+                        <td className="px-3 py-2">{a.tipo_adenda || '—'}</td>
+                        <td className="px-3 py-2">
+                          {a.obra
+                            ? `${a.obra.codigo || a.obra.id} — ${a.obra.nombre}`
+                            : a.obra_id || '—'}
+                        </td>
+                        <td className="px-3 py-2">{formatearMonto(a.monto) || '—'}</td>
+                        <td className="px-3 py-2">{a.estado}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
           {!loading && relaciones?.techado && relaciones.techado.length > 0 && (
             <ObraTechadoResumenSection obra={obra} entradas={relaciones.techado} />
           )}
 
-          {!loading && relaciones && sigedes.length > 0 && (
+          {!loading && relaciones && (
             <>
               <section>
                 <div className="flex items-center gap-2 mb-3">
@@ -180,7 +296,9 @@ const ObraMasDetallesDialog: React.FC<ObraMasDetallesDialogProps> = ({ open, onC
                   </h4>
                 </div>
                 {relaciones.tramites.length === 0 ? (
-                  <p className="text-sm text-gray-500 italic">No hay trámites vinculados a este SIGEDE.</p>
+                  <p className="text-sm text-gray-500 italic">
+                    No hay trámites vinculados a esta obra o a su contrato.
+                  </p>
                 ) : (
                   <div className="overflow-x-auto border border-gray-200 rounded-lg">
                     <table className="min-w-full text-sm">
@@ -224,7 +342,7 @@ const ObraMasDetallesDialog: React.FC<ObraMasDetallesDialogProps> = ({ open, onC
                 </div>
                 {relaciones.documentos.length === 0 ? (
                   <p className="text-sm text-gray-500 italic">
-                    No hay documentos técnicos vinculados a este SIGEDE.
+                    No hay documentos técnicos vinculados a esta obra o a su contrato.
                   </p>
                 ) : (
                   <div className="overflow-x-auto border border-gray-200 rounded-lg">

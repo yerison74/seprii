@@ -46,6 +46,8 @@ const JOIN_CONTRATISTA = 'contratistas(responsable)';
 const JOIN_CONTRATISTA_INNER = 'contratistas!inner(responsable)';
 const JOIN_CONTRATO = 'contrato_ref:contrato_id(id, no_contrato, lote, contratista_nombre)';
 
+const COLUMNAS_OBRAS_RECIENTES = new Set<string>(['tipo', 'contrato_id']);
+
 export function columnasObrasProyeccion(proyeccion: ObrasProyeccion): string {
   if (proyeccion === 'completo') return '*';
   const cols = proyeccion === 'reporte' ? OBRAS_COLUMNAS_REPORTE : OBRAS_COLUMNAS_LISTADO;
@@ -68,4 +70,25 @@ export function resolverObrasSelect(
 export function resolverObrasSelectSinJoin(proyeccion: ObrasProyeccion = 'listado'): string {
   if (proyeccion === 'completo') return '*';
   return columnasObrasProyeccion(proyeccion);
+}
+
+/** Select con contratistas pero sin join a contrato (fallback si contrato_id no existe). */
+export function resolverObrasSelectSinContrato(
+  proyeccion: ObrasProyeccion = 'listado',
+  filtroResponsableActivo = false,
+): string {
+  if (proyeccion === 'completo') {
+    const join = filtroResponsableActivo ? JOIN_CONTRATISTA_INNER : JOIN_CONTRATISTA;
+    return `*, ${join}`;
+  }
+  const cols = columnasObrasProyeccion(proyeccion);
+  const join = filtroResponsableActivo ? JOIN_CONTRATISTA_INNER : JOIN_CONTRATISTA;
+  return `${cols}, ${join}`;
+}
+
+/** Select sin columnas recientes (tipo, contrato_id) para BDs sin migrar. */
+export function resolverObrasSelectLegacy(proyeccion: ObrasProyeccion = 'listado'): string {
+  if (proyeccion === 'completo') return '*';
+  const base = proyeccion === 'reporte' ? OBRAS_COLUMNAS_REPORTE : OBRAS_COLUMNAS_LISTADO;
+  return base.filter((c) => !COLUMNAS_OBRAS_RECIENTES.has(c)).join(', ');
 }

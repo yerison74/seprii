@@ -13,6 +13,8 @@ const PLANTILLA_LABEL_TO_KEY = new Map<string, string>(
 
 export type ObraCargaArchivo = Omit<Obra, 'id' | 'created_at' | 'updated_at'> & {
   id_obra?: string | null;
+  /** Solo carga masiva: lote del catálogo contrato (no se persiste en obras). */
+  lote?: number | null;
 };
 
 export type ContratistaCargaArchivo = Pick<
@@ -105,7 +107,7 @@ const DATE_KEYS = new Set([
   'fecha_inauguracion',
 ]);
 
-const NUMBER_KEYS = new Set(['no_aula']);
+const NUMBER_KEYS = new Set(['no_aula', 'lote']);
 
 const DECIMAL_KEYS = new Set([
   'porcentaje_ejecutado',

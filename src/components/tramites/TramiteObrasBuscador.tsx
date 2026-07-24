@@ -18,13 +18,14 @@ import type { BuscarObrasTramiteResult, ObraSigedeResumen, ObraTramiteOpcion } f
 
 interface TramiteObrasBuscadorProps {
   idSigede: string[];
-  onChange: (ids: string[]) => void;
+  obraIds: string[];
+  onChange: (next: { id_sigede: string[]; obra_ids: string[] }) => void;
   obrasResumen: ObraSigedeResumen[];
   onResumenChange: (resumen: ObraSigedeResumen[]) => void;
   disabled?: boolean;
 }
 
-function agregarSigedes(prev: string[], nuevos: string[]): string[] {
+function agregarUnicos(prev: string[], nuevos: string[]): string[] {
   const set = new Set(prev);
   for (const id of nuevos) {
     const t = id.trim();
@@ -35,6 +36,7 @@ function agregarSigedes(prev: string[], nuevos: string[]): string[] {
 
 const TramiteObrasBuscador: React.FC<TramiteObrasBuscadorProps> = ({
   idSigede,
+  obraIds,
   onChange,
   obrasResumen,
   onResumenChange,
@@ -53,21 +55,27 @@ const TramiteObrasBuscador: React.FC<TramiteObrasBuscadorProps> = ({
       setAbierto(false);
       return;
     }
+    let cancelado = false;
     const timer = window.setTimeout(async () => {
       setBuscando(true);
       try {
         const resp = await tramitesAPI.buscarObrasParaTramite(term, 12);
+        if (cancelado) return;
         setResultado(resp.data.data);
         setAbierto(true);
       } catch (err) {
         console.error('Error al buscar obras para trámite:', err);
+        if (cancelado) return;
         setResultado({ obras: [], loteContrato: null });
         setAbierto(true);
       } finally {
-        setBuscando(false);
+        if (!cancelado) setBuscando(false);
       }
     }, 300);
-    return () => window.clearTimeout(timer);
+    return () => {
+      cancelado = true;
+      window.clearTimeout(timer);
+    };
   }, [busqueda]);
 
   useEffect(() => {
@@ -80,52 +88,80 @@ const TramiteObrasBuscador: React.FC<TramiteObrasBuscadorProps> = ({
     return () => document.removeEventListener('mousedown', cerrar);
   }, []);
 
-  const refrescarResumen = async (ids: string[]) => {
-    if (ids.length === 0) {
+  const refrescarResumen = async (sigedes: string[], obras: string[]) => {
+    if (sigedes.length === 0 && obras.length === 0) {
       onResumenChange([]);
       return;
     }
     try {
-      const resp = await gestionTecnicaDocumentoAPI.resumenesSigede(ids);
+      const resp = await gestionTecnicaDocumentoAPI.resumenesSigede(sigedes, obras);
       onResumenChange(resp.data.data || []);
     } catch {
-      onResumenChange(
-        ids.map((id) => ({ id_sigede: id, encontrada: false })),
-      );
+      onResumenChange([
+        ...sigedes.map((id) => ({ id_sigede: id, encontrada: false as const })),
+        ...obras.map((id) => ({
+          id_sigede: id,
+          obra_id: id,
+          tipo_gestion: 'Mantenimiento' as const,
+          encontrada: false as const,
+        })),
+      ]);
     }
   };
 
-  const aplicarSigedes = async (nuevos: string[]) => {
-    const merged = agregarSigedes(idSigede, nuevos);
-    onChange(merged);
-    await refrescarResumen(merged);
+  const aplicarObras = async (nuevas: ObraTramiteOpcion[]) => {
+    const nuevosSigede = nuevas.filter((o) => !o.sinSigede).map((o) => o.sigede);
+    const nuevosIds = nuevas.filter((o) => o.sinSigede).map((o) => o.id);
+    const nextSigede = agregarUnicos(idSigede, nuevosSigede);
+    const nextObraIds = agregarUnicos(obraIds, nuevosIds);
+    onChange({ id_sigede: nextSigede, obra_ids: nextObraIds });
+    await refrescarResumen(nextSigede, nextObraIds);
     setBusqueda('');
     setAbierto(false);
   };
 
   const agregarObra = async (obra: ObraTramiteOpcion) => {
     const lote = resultado?.loteContrato;
-    if (lote && obra.contrato && lote.contrato === obra.contrato) {
-      await aplicarSigedes(lote.obras.map((o) => o.sigede));
+    if (
+      lote &&
+      obra.contrato &&
+      lote.contrato &&
+      lote.contrato.toLowerCase() === obra.contrato.toLowerCase()
+    ) {
+      await aplicarObras(lote.obras);
       return;
     }
-    await aplicarSigedes([obra.sigede]);
+    await aplicarObras([obra]);
   };
 
-  const quitarSigede = async (id: string) => {
-    const next = idSigede.filter((x) => x !== id);
-    onChange(next);
-    onResumenChange(obrasResumen.filter((o) => o.id_sigede !== id));
+  const quitarObra = async (fila: ObraSigedeResumen) => {
+    const esMant = fila.tipo_gestion === 'Mantenimiento' || !!fila.obra_id;
+    const nextSigede = esMant
+      ? idSigede
+      : idSigede.filter((x) => x !== fila.id_sigede);
+    const nextObraIds = esMant
+      ? obraIds.filter((x) => x !== (fila.obra_id || fila.id_sigede))
+      : obraIds;
+    onChange({ id_sigede: nextSigede, obra_ids: nextObraIds });
+    onResumenChange(
+      obrasResumen.filter((o) => o.id_sigede !== fila.id_sigede),
+    );
   };
+
+  const yaAsignada = (obra: ObraTramiteOpcion) =>
+    obra.sinSigede ? obraIds.includes(obra.id) : idSigede.includes(obra.sigede);
+
+  const totalVinculadas = idSigede.length + obraIds.length;
 
   return (
     <Box>
       <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
-        Obras relacionadas (SIGEDE)
+        Obras relacionadas
       </Typography>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-        Busque por SIGEDE, contrato, nombre del plantel o responsable. Si busca por número de contrato,
-        se agregarán todas las obras de ese contrato.
+        Busque cualquier obra por SIGEDE, ID, contrato, plantel, provincia, municipio o responsable.
+        Incluye obras de arrastre y de mantenimiento (sin SIGEDE). Si el término coincide con un
+        número de contrato, podrá agregar todas las obras de ese contrato.
       </Typography>
 
       <Box ref={contenedorRef} sx={{ position: 'relative', mb: 2 }}>
@@ -135,7 +171,7 @@ const TramiteObrasBuscador: React.FC<TramiteObrasBuscadorProps> = ({
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           onFocus={() => busqueda.trim() && setAbierto(true)}
-          placeholder="SIGEDE, contrato, plantel o responsable…"
+          placeholder="SIGEDE, ID, contrato, plantel, provincia o municipio…"
           disabled={disabled}
           InputProps={{
             startAdornment: <Search sx={{ mr: 1, color: 'text.secondary', fontSize: 20 }} />,
@@ -148,7 +184,7 @@ const TramiteObrasBuscador: React.FC<TramiteObrasBuscadorProps> = ({
             elevation={4}
             sx={{
               position: 'absolute',
-              zIndex: 10,
+              zIndex: 1400,
               mt: 0.5,
               width: '100%',
               maxHeight: 280,
@@ -158,15 +194,13 @@ const TramiteObrasBuscador: React.FC<TramiteObrasBuscadorProps> = ({
             <List dense disablePadding>
               {resultado.loteContrato && resultado.loteContrato.obras.length > 0 && (
                 <ListItemButton
-                  onClick={() =>
-                    aplicarSigedes(resultado.loteContrato!.obras.map((o) => o.sigede))
-                  }
+                  onClick={() => aplicarObras(resultado.loteContrato!.obras)}
                   sx={{ bgcolor: 'primary.50', borderBottom: '1px solid', borderColor: 'divider' }}
                 >
                   <PlaylistAdd color="primary" sx={{ mr: 1.5 }} />
                   <ListItemText
                     primary={`Agregar todas las obras del contrato ${resultado.loteContrato.contrato}`}
-                    secondary={`${resultado.loteContrato.obras.length} plantel(es) SIGEDE`}
+                    secondary={`${resultado.loteContrato.obras.length} obra(s)`}
                   />
                 </ListItemButton>
               )}
@@ -176,23 +210,29 @@ const TramiteObrasBuscador: React.FC<TramiteObrasBuscadorProps> = ({
                 </ListItemButton>
               )}
               {resultado.obras.map((obra) => {
-                const yaAsignada = idSigede.includes(obra.sigede);
+                const asignada = yaAsignada(obra);
                 const esLote =
                   resultado.loteContrato &&
                   obra.contrato &&
                   resultado.loteContrato.contrato === obra.contrato;
+                const etiqueta = obra.sinSigede ? obra.id : obra.sigede;
                 return (
                   <ListItemButton
-                    key={obra.sigede}
-                    disabled={yaAsignada}
+                    key={obra.id}
+                    disabled={asignada}
                     onClick={() => agregarObra(obra)}
                   >
                     <ListItemText
                       primary={
                         <Box component="span" sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                           <Typography component="span" variant="body2" fontWeight={600} color="primary">
-                            {obra.sigede}
+                            {etiqueta}
                           </Typography>
+                          {obra.sinSigede && (
+                            <Typography component="span" variant="caption" color="text.secondary">
+                              (sin SIGEDE)
+                            </Typography>
+                          )}
                           <Typography component="span" variant="body2" color="text.secondary">
                             {obra.nombre}
                           </Typography>
@@ -206,7 +246,7 @@ const TramiteObrasBuscador: React.FC<TramiteObrasBuscadorProps> = ({
                         .filter(Boolean)
                         .join(' · ')}
                     />
-                    {!yaAsignada && (
+                    {!asignada && (
                       <Add fontSize="small" color={esLote ? 'primary' : 'action'} />
                     )}
                   </ListItemButton>
@@ -225,7 +265,7 @@ const TramiteObrasBuscador: React.FC<TramiteObrasBuscadorProps> = ({
           >
             <Box component="thead" sx={{ bgcolor: 'grey.50' }}>
               <Box component="tr">
-                {['SIGEDE', 'Contrato', 'Plantel', 'Provincia', ''].map((h) => (
+                {['ID / SIGEDE', 'Contrato', 'Plantel', 'Provincia', ''].map((h) => (
                   <Box
                     key={h || 'acc'}
                     component="th"
@@ -241,6 +281,11 @@ const TramiteObrasBuscador: React.FC<TramiteObrasBuscadorProps> = ({
                 <Box component="tr" key={fila.id_sigede} sx={{ borderTop: '1px solid', borderColor: 'divider' }}>
                   <Box component="td" sx={{ px: 1.5, py: 1, fontFamily: 'monospace' }}>
                     {fila.id_sigede}
+                    {fila.tipo_gestion === 'Mantenimiento' ? (
+                      <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                        mant.
+                      </Typography>
+                    ) : null}
                   </Box>
                   <Box component="td" sx={{ px: 1.5, py: 1 }}>
                     {fila.encontrada ? fila.contrato || '—' : '—'}
@@ -254,7 +299,7 @@ const TramiteObrasBuscador: React.FC<TramiteObrasBuscadorProps> = ({
                   <Box component="td" sx={{ px: 1, py: 0.5, textAlign: 'right' }}>
                     <IconButton
                       size="small"
-                      onClick={() => quitarSigede(fila.id_sigede)}
+                      onClick={() => quitarObra(fila)}
                       disabled={disabled}
                       aria-label="Quitar obra"
                     >
@@ -270,13 +315,13 @@ const TramiteObrasBuscador: React.FC<TramiteObrasBuscadorProps> = ({
         <Chip label="Sin obras vinculadas" size="small" variant="outlined" />
       )}
 
-      {idSigede.length > 0 && (
+      {totalVinculadas > 0 && (
         <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end' }}>
           <Button
             size="small"
             color="inherit"
             onClick={() => {
-              onChange([]);
+              onChange({ id_sigede: [], obra_ids: [] });
               onResumenChange([]);
             }}
             disabled={disabled}
