@@ -302,6 +302,7 @@ export const gestionTecnicaDocumentoAPI = {
     fecha_salida?: string | null;
     observaciones?: string | null;
     usuario?: string | null;
+    archivo?: File | null;
   }) => {
     try {
       const data = await documentosTecnicosService.crearMovimiento(payload);
@@ -328,6 +329,8 @@ export const gestionTecnicaDocumentoAPI = {
       departamento?: string | null;
       fecha_salida?: string | null;
       observaciones?: string | null;
+      archivo?: File | null;
+      quitar_pdf?: boolean;
     },
   ) => {
     try {

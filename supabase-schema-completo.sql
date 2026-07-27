@@ -650,7 +650,9 @@ ALTER TABLE public.movimiento_documentos_tecnicos_obra
   ADD COLUMN IF NOT EXISTS fecha_entrada date,
   ADD COLUMN IF NOT EXISTS oficio varchar(120),
   ADD COLUMN IF NOT EXISTS estatus varchar(40),
-  ADD COLUMN IF NOT EXISTS observaciones text;
+  ADD COLUMN IF NOT EXISTS observaciones text,
+  ADD COLUMN IF NOT EXISTS archivo_pdf text,
+  ADD COLUMN IF NOT EXISTS nombre_archivo text;
 
 COMMENT ON COLUMN public.documentos_tecnicos_obra.obra_ids IS
   'IDs de obras de mantenimiento (obras.id, ej. MT-xxxx) vinculadas al documento.';

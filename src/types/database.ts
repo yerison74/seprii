@@ -238,6 +238,8 @@ export interface MovimientoDocumentoTecnicoObra {
   departamento?: string | null;
   fecha_salida?: string | null;
   observaciones?: string | null;
+  archivo_pdf?: string | null;
+  nombre_archivo?: string | null;
   created_at?: string | null;
   area?: Area | null;
 }

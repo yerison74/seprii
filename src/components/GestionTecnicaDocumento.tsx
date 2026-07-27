@@ -14,6 +14,8 @@ import {
   InfoOutlined,
   CheckCircleOutline,
   ErrorOutline,
+  AttachFile,
+  PictureAsPdf,
 } from '@mui/icons-material';
 import { descargarBlob } from '../utils/gestionTecnicaDocumentoExcel';
 import { gestionTecnicaDocumentoAPI } from '../services/api';
@@ -631,6 +633,11 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
   });
   const [agregandoMant, setAgregandoMant] = useState(false);
   const [movForm, setMovForm] = useState(EMPTY_MOV_FORM);
+  const [movPdfFile, setMovPdfFile] = useState<File | null>(null);
+  const [movPdfUrl, setMovPdfUrl] = useState<string | null>(null);
+  const [movPdfNombre, setMovPdfNombre] = useState<string | null>(null);
+  const [quitarMovPdf, setQuitarMovPdf] = useState(false);
+  const movPdfInputRef = useRef<HTMLInputElement>(null);
   const [editandoMovId, setEditandoMovId] = useState<string | null>(null);
 
   const [contratistaBusqueda, setContratistaBusqueda] = useState('');
@@ -838,6 +845,11 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
 
   const resetMovForm = () => {
     setMovForm(EMPTY_MOV_FORM);
+    setMovPdfFile(null);
+    setMovPdfUrl(null);
+    setMovPdfNombre(null);
+    setQuitarMovPdf(false);
+    if (movPdfInputRef.current) movPdfInputRef.current.value = '';
     setEditandoMovId(null);
     setSecFormMov(false);
   };
@@ -853,6 +865,11 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
       fecha_salida: mov.fecha_salida?.slice(0, 10) || '',
       observaciones: mov.observaciones || '',
     });
+    setMovPdfFile(null);
+    setMovPdfUrl(mov.archivo_pdf || null);
+    setMovPdfNombre(mov.nombre_archivo || null);
+    setQuitarMovPdf(false);
+    if (movPdfInputRef.current) movPdfInputRef.current.value = '';
     setEditandoMovId(mov.id);
     setSecFormMov(true);
     movFormularioRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1229,6 +1246,8 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
         await gestionTecnicaDocumentoAPI.actualizarMovimiento(editandoMovId, {
           solicitud: seleccionado.solicitud,
           ...payload,
+          archivo: movPdfFile,
+          quitar_pdf: !movPdfFile && quitarMovPdf,
         });
       } else {
         const nombreUsuario = user
@@ -1238,6 +1257,7 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
           solicitud: seleccionado.solicitud,
           ...payload,
           usuario: nombreUsuario || undefined,
+          archivo: movPdfFile,
         });
       }
       resetMovForm();
@@ -1872,7 +1892,16 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
             seleccionado && !soloLectura && !secFormMov ? (
               <button
                 type="button"
-                onClick={() => setSecFormMov(true)}
+                onClick={() => {
+                  setMovForm(EMPTY_MOV_FORM);
+                  setMovPdfFile(null);
+                  setMovPdfUrl(null);
+                  setMovPdfNombre(null);
+                  setQuitarMovPdf(false);
+                  if (movPdfInputRef.current) movPdfInputRef.current.value = '';
+                  setEditandoMovId(null);
+                  setSecFormMov(true);
+                }}
                 className={BTN_PRIMARY_SM}
               >
                 <Add sx={{ fontSize: 16 }} />
@@ -1907,6 +1936,15 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
                     agrupar movimientos relacionados en el documento.
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs text-slate-500">Fecha solicitud</label>
+                      <input
+                        type="date"
+                        value={movForm.fecha_solicitud}
+                        onChange={(e) => setMovForm((p) => ({ ...p, fecha_solicitud: e.target.value }))}
+                        className={inputClass}
+                      />
+                    </div>
                     <div className="space-y-1">
                       <label className="text-xs text-slate-500">Fecha entrada</label>
                       <input
@@ -1963,15 +2001,6 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
                       options={areas.map((a) => ({ value: a.id, label: a.area }))}
                     />
                     <div className="space-y-1 sm:col-span-2">
-                      <label className="text-xs text-slate-500">Fecha solicitud</label>
-                      <input
-                        type="date"
-                        value={movForm.fecha_solicitud}
-                        onChange={(e) => setMovForm((p) => ({ ...p, fecha_solicitud: e.target.value }))}
-                        className={`${inputClass} max-w-xs`}
-                      />
-                    </div>
-                    <div className="space-y-1 sm:col-span-2">
                       <label className={labelClass}>Observaciones</label>
                       <textarea
                         value={movForm.observaciones}
@@ -1980,6 +2009,80 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
                         rows={2}
                         placeholder="Notas sobre este movimiento u oficio"
                       />
+                    </div>
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <label className="text-xs text-slate-500">Archivo PDF (opcional)</label>
+                      <input
+                        ref={movPdfInputRef}
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null;
+                          if (!file) return;
+                          const name = file.name.toLowerCase();
+                          const isPdf = name.endsWith('.pdf') || file.type === 'application/pdf';
+                          if (!isPdf) {
+                            setError('Solo se permiten archivos PDF');
+                            e.target.value = '';
+                            return;
+                          }
+                          if (file.size > 10 * 1024 * 1024) {
+                            setError('El archivo PDF es demasiado grande (límite 10MB)');
+                            e.target.value = '';
+                            return;
+                          }
+                          setError(null);
+                          setMovPdfFile(file);
+                          setQuitarMovPdf(false);
+                        }}
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          className={BTN_SECONDARY_SM}
+                          onClick={() => movPdfInputRef.current?.click()}
+                        >
+                          <AttachFile sx={{ fontSize: 16 }} />
+                          {movPdfFile || (movPdfUrl && !quitarMovPdf)
+                            ? 'Cambiar PDF'
+                            : 'Seleccionar archivo PDF'}
+                        </button>
+                        {(movPdfFile || (movPdfUrl && !quitarMovPdf)) && (
+                          <button
+                            type="button"
+                            className="text-[11px] text-stone-500 hover:text-stone-700 underline"
+                            onClick={() => {
+                              setMovPdfFile(null);
+                              setQuitarMovPdf(true);
+                              if (movPdfInputRef.current) movPdfInputRef.current.value = '';
+                            }}
+                          >
+                            Quitar
+                          </button>
+                        )}
+                      </div>
+                      {movPdfFile ? (
+                        <div className="flex items-center gap-2 rounded-xl bg-emerald-50/80 px-3 py-2 text-xs text-emerald-800">
+                          <PictureAsPdf sx={{ fontSize: 16 }} className="text-red-500 shrink-0" />
+                          <span className="truncate">
+                            {movPdfFile.name} ({(movPdfFile.size / 1024 / 1024).toFixed(2)} MB)
+                          </span>
+                        </div>
+                      ) : movPdfUrl && !quitarMovPdf ? (
+                        <a
+                          href={movPdfUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                        >
+                          <PictureAsPdf sx={{ fontSize: 14 }} />
+                          {movPdfNombre || 'Ver PDF actual'}
+                        </a>
+                      ) : null}
+                      <p className="text-[11px] text-stone-400">
+                        Solo se permiten archivos PDF. Tamaño máximo: 10MB
+                      </p>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 justify-end">
@@ -2077,6 +2180,18 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
                           <p className="text-[11px] text-stone-400 mt-1.5 line-clamp-2" title={mov.observaciones}>
                             {mov.observaciones}
                           </p>
+                        )}
+                        {mov.archivo_pdf && (
+                          <a
+                            href={mov.archivo_pdf}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline mt-1.5"
+                          >
+                            <PictureAsPdf sx={{ fontSize: 13 }} />
+                            {mov.nombre_archivo || 'Ver PDF'}
+                          </a>
                         )}
                       </SepriListCard>
                     );

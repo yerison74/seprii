@@ -2890,6 +2890,23 @@ const DOC_TECNICO_SELECT_SIN_CONTRATO =
 const DOC_TECNICO_SELECT_BASE = '*';
 const MOV_DOC_TECNICO_SELECT = '*, area:departamento(id, area)';
 
+async function subirPdfMovimientoDocumento(
+  solicitud: string,
+  file: File,
+): Promise<{ url: string; nombre: string }> {
+  if (file.type && file.type !== 'application/pdf') {
+    throw new Error('Solo se permiten archivos PDF');
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error('El PDF no puede superar 10 MB');
+  }
+  const safeName = file.name.replace(/[^\w.\-() ]+/g, '_');
+  const safeSolicitud = solicitud.trim().replace(/[^\w.\-]+/g, '_').slice(0, 60) || 'movimiento';
+  const path = `movimientos-documento/${safeSolicitud}/${Date.now()}-${safeName}`;
+  const url = await storageService.subirArchivo(file, 'documentos', path);
+  return { url, nombre: file.name };
+}
+
 type PostgrestQueryError = { code?: string; message?: string } | null;
 
 function esErrorSchemaDocTecnicoQuery(error: PostgrestQueryError): boolean {
@@ -3507,6 +3524,7 @@ export const documentosTecnicosService = {
     fecha_salida?: string | null;
     observaciones?: string | null;
     usuario?: string | null;
+    archivo?: File | null;
   }): Promise<MovimientoDocumentoTecnicoObra> => {
     const solicitud = payload.solicitud.trim();
     const existentes = await documentosTecnicosService.listarMovimientos(solicitud);
@@ -3516,6 +3534,14 @@ export const documentosTecnicosService = {
     }
     if (payload.estatus?.trim() && !esEstatusMovimientoValido(payload.estatus)) {
       throw new Error('Estatus debe ser: En Proceso, Detenida o Certificada');
+    }
+
+    let archivoPdf: string | null = null;
+    let nombreArchivo: string | null = null;
+    if (payload.archivo) {
+      const subido = await subirPdfMovimientoDocumento(solicitud, payload.archivo);
+      archivoPdf = subido.url;
+      nombreArchivo = subido.nombre;
     }
 
     const row: Record<string, string | null> = {
@@ -3528,6 +3554,8 @@ export const documentosTecnicosService = {
       departamento: payload.departamento?.trim() || null,
       fecha_salida: payload.fecha_salida || null,
       observaciones: payload.observaciones?.trim() || null,
+      archivo_pdf: archivoPdf,
+      nombre_archivo: nombreArchivo,
     };
 
     const { data, error } = await supabase
@@ -3538,9 +3566,9 @@ export const documentosTecnicosService = {
 
     if (error) {
       const msg = error.message || '';
-      if (/fecha_entrada|oficio|estatus|observaciones/i.test(msg) && (error.code === 'PGRST204' || /column/i.test(msg))) {
+      if (/fecha_entrada|oficio|estatus|observaciones|archivo_pdf|nombre_archivo/i.test(msg) && (error.code === 'PGRST204' || /column/i.test(msg))) {
         throw new Error(
-          'Faltan columnas en movimiento_documentos_tecnicos_obra. Ejecute supabase-schema-completo.sql en Supabase y recargue la página.',
+          'Faltan columnas en movimiento_documentos_tecnicos_obra. Ejecute supabase-migracion-movimiento-documento-pdf.sql (o el schema completo) en Supabase y recargue la página.',
         );
       }
       throw error;
@@ -3571,6 +3599,8 @@ export const documentosTecnicosService = {
       departamento?: string | null;
       fecha_salida?: string | null;
       observaciones?: string | null;
+      archivo?: File | null;
+      quitar_pdf?: boolean;
     },
   ): Promise<MovimientoDocumentoTecnicoObra> => {
     const solicitud = payload.solicitud.trim();
@@ -3593,6 +3623,15 @@ export const documentosTecnicosService = {
       fecha_salida: payload.fecha_salida || null,
       observaciones: payload.observaciones?.trim() || null,
     };
+
+    if (payload.archivo) {
+      const subido = await subirPdfMovimientoDocumento(solicitud, payload.archivo);
+      updates.archivo_pdf = subido.url;
+      updates.nombre_archivo = subido.nombre;
+    } else if (payload.quitar_pdf) {
+      updates.archivo_pdf = null;
+      updates.nombre_archivo = null;
+    }
 
     const { data, error } = await supabase
       .from('movimiento_documentos_tecnicos_obra')
