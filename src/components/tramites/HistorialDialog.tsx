@@ -11,7 +11,7 @@ import {
   Button,
   CircularProgress,
 } from '@mui/material';
-import { History as HistoryIcon, Person } from '@mui/icons-material';
+import { History as HistoryIcon, Person, PictureAsPdf } from '@mui/icons-material';
 import type { Tramite, MovimientoTramite } from '../../services/api';
 import { esMovimientoDesdeGestionTecnica } from '../../utils/tramiteGestionTecnica';
 
@@ -339,9 +339,72 @@ const HistorialDialog: React.FC<HistorialDialogProps> = ({
                       >
                         <Person fontSize="small" color="action" />
                         <Typography variant="body2" color="text.secondary">
-                          <strong>Usuario:</strong> {movimiento.usuario}
+                          <strong>Registrado por:</strong> {movimiento.usuario}
                         </Typography>
                       </Box>
+                    )}
+
+                    {desdeGestionTecnica && movimiento.detalle_gestion_tecnica && (
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          gap: 1,
+                          flexWrap: 'wrap',
+                          mb: 1,
+                        }}
+                      >
+                        {movimiento.detalle_gestion_tecnica.solicitud && (
+                          <Chip
+                            size="small"
+                            label={`Solicitud: ${movimiento.detalle_gestion_tecnica.solicitud}`}
+                            variant="outlined"
+                          />
+                        )}
+                        {movimiento.detalle_gestion_tecnica.estatus && (
+                          <Chip
+                            size="small"
+                            label={`Estatus: ${movimiento.detalle_gestion_tecnica.estatus}`}
+                            color="info"
+                            variant="outlined"
+                          />
+                        )}
+                        {movimiento.detalle_gestion_tecnica.fecha_solicitud && (
+                          <Chip
+                            size="small"
+                            label={`F. solicitud: ${String(movimiento.detalle_gestion_tecnica.fecha_solicitud).slice(0, 10)}`}
+                            variant="outlined"
+                          />
+                        )}
+                        {movimiento.detalle_gestion_tecnica.fecha_entrada && (
+                          <Chip
+                            size="small"
+                            label={`Entrada: ${String(movimiento.detalle_gestion_tecnica.fecha_entrada).slice(0, 10)}`}
+                            variant="outlined"
+                          />
+                        )}
+                        {movimiento.detalle_gestion_tecnica.fecha_salida && (
+                          <Chip
+                            size="small"
+                            label={`Salida: ${String(movimiento.detalle_gestion_tecnica.fecha_salida).slice(0, 10)}`}
+                            variant="outlined"
+                          />
+                        )}
+                      </Box>
+                    )}
+
+                    {movimiento.archivo_pdf && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="error"
+                        startIcon={<PictureAsPdf />}
+                        href={movimiento.archivo_pdf}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{ mb: 1 }}
+                      >
+                        {movimiento.nombre_archivo || 'Ver PDF del movimiento'}
+                      </Button>
                     )}
 
                     {movimiento.observaciones && (

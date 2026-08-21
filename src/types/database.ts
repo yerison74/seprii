@@ -182,6 +182,8 @@ export interface TramiteObraResumen {
   area_destinatario?: string | null;
   proceso?: string | null;
   fecha_creacion?: string | null;
+  tipo_tramite?: string | null;
+  nombre_destinatario?: string | null;
 }
 
 /** Documento técnico vinculado a un SIGEDE (resumen para detalle de obra). */
@@ -297,6 +299,18 @@ export interface MovimientoTramite {
   tipo_tramite?: 'tipo_interno' | 'tipo_contratista' | 'tipo_gestion_tecnica' | string | null;
   /** FK al movimiento en gestión técnica de documento (espejo de solo lectura en seguimiento). */
   movimiento_documento_id?: string | null;
+  /** PDF del movimiento de gestión técnica (enriquecido en historial). */
+  archivo_pdf?: string | null;
+  nombre_archivo?: string | null;
+  /** Datos extra del movimiento GT (enriquecido en historial). */
+  detalle_gestion_tecnica?: {
+    solicitud?: string | null;
+    fecha_solicitud?: string | null;
+    fecha_entrada?: string | null;
+    fecha_salida?: string | null;
+    estatus?: string | null;
+    no_tramite?: string | null;
+  } | null;
 }
 
 /** Registro de tiempo que un trámite permanece en un área (para procesos con medición). */

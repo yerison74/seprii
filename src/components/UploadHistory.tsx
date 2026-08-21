@@ -1569,6 +1569,11 @@ const TramiteHistory: React.FC<TramiteHistoryProps> = ({ soloLectura = false }) 
             handleViewHistory(selectedTramite);
           }
         }}
+        onVerPdf={() => {
+          if (selectedTramite) {
+            handleViewPdf(selectedTramite);
+          }
+        }}
       />
 
       {/* Notificación de nuevo trámite recibido */}

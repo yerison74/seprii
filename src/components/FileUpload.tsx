@@ -32,6 +32,10 @@ import {
   type ObraFormState,
 } from '../utils/obraFormulario';
 import {
+  TABLAS_CARGA,
+  type TablaCarga,
+} from '../constants/obraPlantillaCarga';
+import {
   BTN_PRIMARY,
   BTN_SECONDARY,
   BTN_ACCENT,
@@ -63,6 +67,11 @@ interface FileUploadProps {
 }
 
 const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
+function nombreArchivoPlantilla(tabla: TablaCarga, ext: 'xml' | 'xlsx') {
+  const sufijo = tabla === 'todo' ? 'general' : tabla;
+  return `plantilla-${sufijo}.${ext}`;
+}
 
 const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete, onError, soloLectura = false }) => {
   const [file, setFile] = useState<File | null>(null);
@@ -146,6 +155,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete, onError, solo
   const [obraMessage, setObraMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [obraActualId, setObraActualId] = useState<string | null>(null);
   const [panelAbierto, setPanelAbierto] = useState<PanelCargaArchivos>(null);
+  const [tablaCarga, setTablaCarga] = useState<TablaCarga>('todo');
 
   useEffect(() => {
     const term = obraFormState.contratista.responsable.trim();
@@ -205,9 +215,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete, onError, solo
       resetMessages();
       const isXml = file.name.toLowerCase().endsWith('.xml');
       if (isXml) {
-        await uploadAPI.validarXml(file);
+        await uploadAPI.validarXml(file, tablaCarga);
       } else {
-        await uploadAPI.validarExcel(file);
+        await uploadAPI.validarExcel(file, tablaCarga);
       }
       setValidMessage('Archivo válido.');
     } catch (err: any) {
@@ -238,9 +248,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete, onError, solo
       const onProg = (p: ProgresoCargaObra) => setUploadProgress(p);
       let resultado;
       if (isXml) {
-        resultado = await uploadAPI.subirXml(file, onProg);
+        resultado = await uploadAPI.subirXml(file, onProg, tablaCarga);
       } else {
-        resultado = await uploadAPI.subirExcel(file, onProg);
+        resultado = await uploadAPI.subirExcel(file, onProg, tablaCarga);
       }
       
       // Mostrar información detallada del procesamiento
@@ -281,12 +291,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete, onError, solo
 
   const handleDownloadTemplate = async () => {
     try {
-      const resp = await uploadAPI.descargarPlantilla();
+      const resp = await uploadAPI.descargarPlantilla(tablaCarga);
       const blob = new Blob([resp.data], { type: 'application/xml' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'plantilla-obras.xml';
+      a.download = nombreArchivoPlantilla(tablaCarga, 'xml');
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -299,12 +309,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete, onError, solo
 
   const handleDownloadTemplateExcel = async () => {
     try {
-      const resp = await uploadAPI.descargarPlantillaExcel();
+      const resp = await uploadAPI.descargarPlantillaExcel(tablaCarga);
       const blob = new Blob([resp.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'plantilla-obras.xlsx';
+      a.download = nombreArchivoPlantilla(tablaCarga, 'xlsx');
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -321,19 +331,23 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete, onError, solo
       setDownloading(true);
 
       const filtros = reporteFiltrosToObrasFilters(exportFilters);
-      const response = await uploadAPI.descargarDatos(filtros);
+      const response = await uploadAPI.descargarDatos(filtros, tablaCarga);
       const blob = new Blob([response.data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'obras-export.xlsx';
+      a.download = tablaCarga === 'contratistas' ? 'contratistas-export.xlsx' : 'obras-export.xlsx';
       document.body.appendChild(a);
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-      setValidMessage('Archivo de obras descargado correctamente.');
+      setValidMessage(
+        tablaCarga === 'contratistas'
+          ? 'Archivo de contratistas descargado correctamente.'
+          : 'Archivo de obras descargado correctamente.',
+      );
     } catch (err: any) {
       const msg = err?.response?.data?.error || 'No se pudo descargar la información de las obras.';
       setError(msg);
@@ -652,7 +666,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete, onError, solo
           role="presentation"
         >
           <div
-            className={`${CA_MODAL_PANEL} ${panelAbierto === 'exportar' ? 'max-w-5xl' : 'max-w-lg'}`}
+            className={`${CA_MODAL_PANEL} ${panelAbierto === 'exportar' ? 'max-w-5xl' : 'max-w-xl'}`}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -670,11 +684,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete, onError, solo
                 </h3>
                 <p className="text-xs text-stone-400 mt-1">
                   {panelAbierto === 'plantilla' &&
-                    'Descargue el formato correcto (hoja Obras + referencia de columnas).'}
+                    'Elija la tabla y descargue el formato (hoja de datos + referencia). Si el ID existe se actualiza; si no, se crea.'}
                   {panelAbierto === 'importar' &&
-                    'Suba un archivo Excel o XML con múltiples obras (máx. 10 MB).'}
+                    'Elija la tabla a actualizar y suba Excel o XML (máx. 10 MB). Las filas se conectan por ID.'}
                   {panelAbierto === 'exportar' &&
-                    'Filtre por cualquier campo del reporte y descargue un Excel con el mismo formato que la plantilla de carga.'}
+                    'Elija la tabla. En contratistas el Excel tiene una fila por no. contrato.'}
                 </p>
               </div>
               <button
@@ -689,24 +703,80 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete, onError, solo
 
             <div className="p-5 space-y-4">
               {panelAbierto === 'plantilla' && (
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <button type="button" onClick={handleDownloadTemplate} className={BTN_GHOST}>
-                    <DownloadIcon className="mr-1" fontSize="small" />
-                    Plantilla XML
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDownloadTemplateExcel}
-                    className={BTN_GHOST}
-                  >
-                    <DownloadIcon className="mr-1" fontSize="small" />
-                    Plantilla Excel
-                  </button>
+                <div className="space-y-4">
+                  <fieldset className="space-y-2">
+                    <legend className={CA_LABEL}>Tabla de la plantilla</legend>
+                    <div className="grid gap-2">
+                      {TABLAS_CARGA.map((t) => (
+                        <label
+                          key={t.id}
+                          className={`flex items-start gap-2 rounded-xl border px-3 py-2 cursor-pointer ${
+                            tablaCarga === t.id
+                              ? 'border-primary/40 bg-primary/5'
+                              : 'border-stone-200'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="tabla-plantilla"
+                            className="mt-1"
+                            checked={tablaCarga === t.id}
+                            onChange={() => setTablaCarga(t.id)}
+                          />
+                          <span>
+                            <span className="text-sm font-medium text-stone-700">{t.label}</span>
+                            <span className="block text-xs text-stone-400">{t.descripcion}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button type="button" onClick={handleDownloadTemplate} className={BTN_GHOST}>
+                      <DownloadIcon className="mr-1" fontSize="small" />
+                      Plantilla XML
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadTemplateExcel}
+                      className={BTN_GHOST}
+                    >
+                      <DownloadIcon className="mr-1" fontSize="small" />
+                      Plantilla Excel
+                    </button>
+                  </div>
                 </div>
               )}
 
               {panelAbierto === 'importar' && (
                 <>
+                  <fieldset className="space-y-2">
+                    <legend className={CA_LABEL}>Tabla a actualizar</legend>
+                    <div className="grid gap-2">
+                      {TABLAS_CARGA.map((t) => (
+                        <label
+                          key={t.id}
+                          className={`flex items-start gap-2 rounded-xl border px-3 py-2 cursor-pointer ${
+                            tablaCarga === t.id
+                              ? 'border-primary/40 bg-primary/5'
+                              : 'border-stone-200'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="tabla-importar"
+                            className="mt-1"
+                            checked={tablaCarga === t.id}
+                            onChange={() => setTablaCarga(t.id)}
+                          />
+                          <span>
+                            <span className="text-sm font-medium text-stone-700">{t.label}</span>
+                            <span className="block text-xs text-stone-400">{t.descripcion}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
                   <label className={CA_DROPZONE}>
                     <CloudUploadIcon className="text-primary/70" />
                     <span className="text-sm font-medium text-stone-600">
@@ -746,13 +816,48 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete, onError, solo
                     </button>
                   </div>
                   <p className="text-xs text-stone-400">
-                    Formatos: .xml, .xlsx, .xls · Tamaño máximo 10 MB
+                    {tablaCarga === 'contratistas'
+                      ? 'Plantilla de contratistas: no_contrato + responsable, identificación, teléfonos y correo. Si el contrato existe se actualiza el contratista; si no, se crea.'
+                      : 'Formatos: .xml, .xlsx, .xls · Tamaño máximo 10 MB. Si el ID existe se actualiza; si no, se crea.'}
                   </p>
                 </>
               )}
 
               {panelAbierto === 'exportar' && (
                 <>
+                  <fieldset className="space-y-2">
+                    <legend className={CA_LABEL}>Tabla a exportar</legend>
+                    <div className="grid gap-2">
+                      {TABLAS_CARGA.map((t) => (
+                        <label
+                          key={t.id}
+                          className={`flex items-start gap-2 rounded-xl border px-3 py-2 cursor-pointer ${
+                            tablaCarga === t.id
+                              ? 'border-primary/40 bg-primary/5'
+                              : 'border-stone-200'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="tabla-exportar"
+                            className="mt-1"
+                            checked={tablaCarga === t.id}
+                            onChange={() => setTablaCarga(t.id)}
+                          />
+                          <span>
+                            <span className="text-sm font-medium text-stone-700">{t.label}</span>
+                            <span className="block text-xs text-stone-400">{t.descripcion}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  {tablaCarga === 'contratistas' && (
+                    <p className="text-xs text-stone-500">
+                      El archivo incluye solo: no_contrato, responsable, identificacion, telefono1, telefono2 y correo.
+                      Una fila por número de contrato.
+                    </p>
+                  )}
                   <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-2xl bg-warm-50/50 shadow-soft">
                     <ReporteObrasFiltros
                       embebido

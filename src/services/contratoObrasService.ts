@@ -3,6 +3,8 @@ import type { Contratista, ContratoTechado } from '../types/database';
 import { normalizarNoContrato } from '../utils/techadoNormalizar';
 
 const CONTRATO_SELECT = 'id, lote, no_contrato, contratista_nombre';
+const CONTRATO_SELECT_COMPLETO =
+  'id, lote, no_contrato, contratista_nombre, contratista_id, fecha_contrato, presupuesto_centro, estatus_contrato, proceso, certificacion, monto_total_inversion, monto_total_contrato, observaciones';
 export const MAX_IDS_CONTRATO_FILTRO = 40;
 
 type ObraContratoRow = {
@@ -212,9 +214,20 @@ export const contratoObrasService = {
     no_contrato: string;
     lote?: number | null;
     contratista_nombre?: string | null;
+    contratista_id?: string | null;
     crearSiFalta?: boolean;
     /** En carga masiva omitir el PATCH global por contrato (cada fila ya lleva contrato_id). */
     vincularObras?: boolean;
+    extras?: Partial<{
+      fecha_contrato: string | null;
+      estatus_contrato: string | null;
+      proceso: string | null;
+      certificacion: string | null;
+      presupuesto_centro: number | null;
+      monto_total_contrato: number | null;
+      monto_total_inversion: number | null;
+      observaciones: string | null;
+    }>;
   }): Promise<ContratoTechado | null> => {
     const norm = normalizarNoContrato(options.no_contrato);
     if (!norm) return null;
@@ -227,6 +240,28 @@ export const contratoObrasService = {
     const loteExplicito =
       options.lote != null && Number.isFinite(options.lote) ? options.lote : null;
 
+    const finalizar = async (contrato: ContratoTechado): Promise<ContratoTechado> => {
+      await vincular(contrato.id);
+      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (options.contratista_id?.trim()) patch.contratista_id = options.contratista_id.trim();
+      if (options.contratista_nombre?.trim()) {
+        patch.contratista_nombre = options.contratista_nombre.trim();
+      }
+      const extras = options.extras || {};
+      for (const [k, v] of Object.entries(extras)) {
+        if (v !== undefined && v !== null && v !== '') patch[k] = v;
+      }
+      if (Object.keys(patch).length <= 1) return contrato;
+      const { data, error } = await supabase
+        .from('contrato')
+        .update(patch)
+        .eq('id', contrato.id)
+        .select(CONTRATO_SELECT)
+        .maybeSingle();
+      if (error || !data) return contrato;
+      return data as ContratoTechado;
+    };
+
     if (loteExplicito != null) {
       const { data: porLote, error: errLote } = await supabase
         .from('contrato')
@@ -237,8 +272,7 @@ export const contratoObrasService = {
 
       if (errLote) throw errLote;
       if (porLote) {
-        await vincular(porLote.id as string);
-        return porLote as ContratoTechado;
+        return finalizar(porLote as ContratoTechado);
       }
     } else {
       const { data: catalogo, error: errCat } = await supabase
@@ -251,8 +285,7 @@ export const contratoObrasService = {
 
       if (errCat) throw errCat;
       if (catalogo) {
-        await vincular(catalogo.id as string);
-        return catalogo as ContratoTechado;
+        return finalizar(catalogo as ContratoTechado);
       }
     }
 
@@ -266,8 +299,7 @@ export const contratoObrasService = {
       })
       .find(Boolean);
     if (refObra?.id) {
-      await vincular(refObra.id);
-      return refObra as ContratoTechado;
+      return finalizar(refObra as ContratoTechado);
     }
 
     if (!options.crearSiFalta) {
@@ -293,6 +325,7 @@ export const contratoObrasService = {
           lote,
           no_contrato: norm,
           contratista_nombre: contratistaNombre,
+          contratista_id: options.contratista_id?.trim() || null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'lote,no_contrato' },
@@ -301,8 +334,112 @@ export const contratoObrasService = {
       .single();
 
     if (errIns) throw errIns;
-    await vincular(creado.id as string);
-    return creado as ContratoTechado;
+    return finalizar(creado as ContratoTechado);
+  },
+
+  /** Si el ID existe actualiza; si no, crea (por lote + no. contrato o con el ID dado). */
+  upsertDesdeCarga: async (options: {
+    contrato_id?: string | null;
+    no_contrato?: string | null;
+    lote?: number | null;
+    contratista_nombre?: string | null;
+    contratista_id?: string | null;
+    extras?: Partial<{
+      fecha_contrato: string | null;
+      estatus_contrato: string | null;
+      proceso: string | null;
+      certificacion: string | null;
+      presupuesto_centro: number | null;
+      monto_total_contrato: number | null;
+      monto_total_inversion: number | null;
+      observaciones: string | null;
+    }>;
+  }): Promise<{ contrato: ContratoTechado; created: boolean } | null> => {
+    const id = options.contrato_id?.trim() || null;
+    const norm = normalizarNoContrato(options.no_contrato || '') || null;
+    const extras = options.extras || {};
+    const tieneExtras = Object.values(extras).some((v) => v != null && String(v).trim() !== '');
+    if (!id && !norm && !tieneExtras) return null;
+
+    const patchBase = (): Record<string, unknown> => {
+      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (options.contratista_id?.trim()) patch.contratista_id = options.contratista_id.trim();
+      if (options.contratista_nombre?.trim()) {
+        patch.contratista_nombre = options.contratista_nombre.trim();
+      }
+      if (norm) patch.no_contrato = norm;
+      if (options.lote != null && Number.isFinite(options.lote)) patch.lote = options.lote;
+      for (const [k, v] of Object.entries(extras)) {
+        if (v !== undefined && v !== null && v !== '') patch[k] = v;
+      }
+      return patch;
+    };
+
+    const actualizar = async (contratoId: string): Promise<ContratoTechado> => {
+      const patch = patchBase();
+      if (Object.keys(patch).length <= 1) {
+        const actual = await contratoObrasService.obtenerContratoPorId(contratoId);
+        if (actual) return actual;
+      }
+      const { data, error } = await supabase
+        .from('contrato')
+        .update(patch)
+        .eq('id', contratoId)
+        .select(CONTRATO_SELECT_COMPLETO)
+        .maybeSingle();
+      if (error) throw error;
+      if (data) return data as ContratoTechado;
+      const fallback = await contratoObrasService.obtenerContratoPorId(contratoId);
+      if (!fallback) throw new Error('Contrato no encontrado');
+      return fallback;
+    };
+
+    if (id) {
+      const existente = await contratoObrasService.obtenerContratoPorId(id);
+      if (existente?.id) {
+        return { contrato: await actualizar(existente.id), created: false };
+      }
+      if (!norm) return null;
+      const lote =
+        options.lote != null && Number.isFinite(options.lote) ? options.lote : 0;
+      const insertRow: Record<string, unknown> = {
+        id,
+        lote,
+        no_contrato: norm,
+        contratista_nombre: options.contratista_nombre?.trim() || null,
+        contratista_id: options.contratista_id?.trim() || null,
+        updated_at: new Date().toISOString(),
+        ...Object.fromEntries(
+          Object.entries(extras).filter(([, v]) => v !== undefined && v !== null && v !== ''),
+        ),
+      };
+      const { data: creado, error } = await supabase
+        .from('contrato')
+        .insert(insertRow)
+        .select(CONTRATO_SELECT_COMPLETO)
+        .single();
+      if (error) throw error;
+      return { contrato: creado as ContratoTechado, created: true };
+    }
+
+    if (!norm) return null;
+    const loteExplicito =
+      options.lote != null && Number.isFinite(options.lote) ? options.lote : null;
+    let existenteQuery = supabase.from('contrato').select('id').eq('no_contrato', norm);
+    if (loteExplicito != null) existenteQuery = existenteQuery.eq('lote', loteExplicito);
+    const { data: porNumero } = await existenteQuery.limit(1).maybeSingle();
+
+    const resuelto = await contratoObrasService.resolverOCrearContrato({
+      no_contrato: norm,
+      lote: options.lote,
+      contratista_nombre: options.contratista_nombre,
+      contratista_id: options.contratista_id,
+      crearSiFalta: true,
+      vincularObras: false,
+      extras,
+    });
+    if (!resuelto?.id) return null;
+    return { contrato: resuelto, created: !porNumero?.id };
   },
 
   buscarContratos: async (search: string, limit = 25): Promise<ContratoTechado[]> => {
@@ -588,11 +725,27 @@ export const contratoObrasService = {
     if (!id) return null;
     const { data, error } = await supabase
       .from('contrato')
-      .select(CONTRATO_SELECT)
+      .select(CONTRATO_SELECT_COMPLETO)
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
     return (data as ContratoTechado) || null;
+  },
+
+  listarPorIds: async (ids: string[]): Promise<ContratoTechado[]> => {
+    const uniq = Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
+    if (uniq.length === 0) return [];
+    const out: ContratoTechado[] = [];
+    for (let i = 0; i < uniq.length; i += 100) {
+      const chunk = uniq.slice(i, i + 100);
+      const { data, error } = await supabase
+        .from('contrato')
+        .select(CONTRATO_SELECT_COMPLETO)
+        .in('id', chunk);
+      if (error) throw error;
+      out.push(...((data || []) as ContratoTechado[]));
+    }
+    return out;
   },
 
   asignarContratoAObra: async (obraId: string, contratoId: string): Promise<void> => {
@@ -604,5 +757,158 @@ export const contratoObrasService = {
       })
       .eq('id', obraId);
     if (error) throw error;
+  },
+
+  /** Vincula el contratista a todos los contratos con ese no_contrato y a sus obras. */
+  asignarContratistaPorNoContrato: async (
+    noContrato: string,
+    contratistaId: string,
+    contratistaNombre?: string | null,
+  ): Promise<void> => {
+    const norm = normalizarNoContrato(noContrato);
+    const cid = contratistaId.trim();
+    if (!norm || !cid) return;
+
+    const patchContrato: Record<string, unknown> = {
+      contratista_id: cid,
+      updated_at: new Date().toISOString(),
+    };
+    if (contratistaNombre?.trim()) patchContrato.contratista_nombre = contratistaNombre.trim();
+
+    const { data: contratos, error: errContratos } = await supabase
+      .from('contrato')
+      .update(patchContrato)
+      .eq('no_contrato', norm)
+      .select('id');
+    if (errContratos) throw errContratos;
+
+    const ids = (contratos || []).map((row) => String(row.id)).filter(Boolean);
+    if (ids.length > 0) {
+      const { error: errObras } = await supabase
+        .from('obras')
+        .update({
+          contratista_id: cid,
+          updated_at: new Date().toISOString(),
+        })
+        .in('contrato_id', ids);
+      if (errObras) throw errObras;
+    }
+  },
+
+  listarFilasPlantillaContratistas: async (opciones?: {
+    noContrato?: string | null;
+    responsable?: string | null;
+    search?: string | null;
+    contratoIds?: string[] | null;
+  }): Promise<
+    Array<{
+      no_contrato: string;
+      responsable: string;
+      identificacion: string;
+      telefono1: string;
+      telefono2: string;
+      correo: string;
+    }>
+  > => {
+    const PAGE = 1000;
+    const contratoIds = Array.from(
+      new Set((opciones?.contratoIds || []).map((id) => id.trim()).filter(Boolean)),
+    );
+    const noFiltro = normalizarNoContrato(opciones?.noContrato || '') || (opciones?.noContrato || '').trim();
+    const respFiltro = (opciones?.responsable || '').trim();
+    const search = (opciones?.search || '').trim();
+
+    type RowContrato = {
+      id: string;
+      no_contrato: string | null;
+      contratista_id: string | null;
+      contratista_nombre: string | null;
+    };
+
+    const contratos: RowContrato[] = [];
+    if (contratoIds.length > 0) {
+      const listados = await contratoObrasService.listarPorIds(contratoIds);
+      contratos.push(
+        ...listados.map((c) => ({
+          id: c.id,
+          no_contrato: c.no_contrato,
+          contratista_id: c.contratista_id || null,
+          contratista_nombre: c.contratista_nombre || null,
+        })),
+      );
+    } else {
+      let offset = 0;
+      for (;;) {
+        let query = supabase
+          .from('contrato')
+          .select('id, no_contrato, contratista_id, contratista_nombre')
+          .order('no_contrato', { ascending: true })
+          .range(offset, offset + PAGE - 1);
+        if (noFiltro) query = query.ilike('no_contrato', `%${noFiltro.replace(/'/g, "''")}%`);
+        const { data, error } = await query;
+        if (error) throw error;
+        const chunk = (data || []) as RowContrato[];
+        contratos.push(...chunk);
+        if (chunk.length < PAGE) break;
+        offset += PAGE;
+      }
+    }
+
+    const contratistaIds = Array.from(
+      new Set(contratos.map((c) => String(c.contratista_id || '').trim()).filter(Boolean)),
+    );
+    const contratistaPorId = new Map<
+      string,
+      {
+        responsable?: string | null;
+        identificacion?: string | null;
+        telefono1?: string | null;
+        telefono2?: string | null;
+        correo?: string | null;
+      }
+    >();
+    for (let i = 0; i < contratistaIds.length; i += 100) {
+      const chunk = contratistaIds.slice(i, i + 100);
+      const { data, error } = await supabase
+        .from('contratistas')
+        .select('id, responsable, identificacion, telefono1, telefono2, correo')
+        .in('id', chunk);
+      if (error) throw error;
+      for (const row of data || []) {
+        contratistaPorId.set(String(row.id), row);
+      }
+    }
+
+    const seen = new Set<string>();
+    const filas: Array<{
+      no_contrato: string;
+      responsable: string;
+      identificacion: string;
+      telefono1: string;
+      telefono2: string;
+      correo: string;
+    }> = [];
+
+    const termino = (respFiltro || search).toLowerCase();
+    for (const contrato of contratos) {
+      const no = normalizarNoContrato(contrato.no_contrato || '') || String(contrato.no_contrato || '').trim();
+      if (!no || seen.has(no)) continue;
+      const ct = contrato.contratista_id ? contratistaPorId.get(contrato.contratista_id) : undefined;
+      const responsable = ct?.responsable || contrato.contratista_nombre || '';
+      if (termino) {
+        const hay = responsable.toLowerCase().includes(termino) || no.toLowerCase().includes(termino);
+        if (!hay) continue;
+      }
+      seen.add(no);
+      filas.push({
+        no_contrato: no,
+        responsable,
+        identificacion: ct?.identificacion || '',
+        telefono1: ct?.telefono1 || '',
+        telefono2: ct?.telefono2 || '',
+        correo: ct?.correo || '',
+      });
+    }
+    return filas;
   },
 };

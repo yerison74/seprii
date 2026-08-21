@@ -16,6 +16,7 @@ import {
   ErrorOutline,
   AttachFile,
   PictureAsPdf,
+  History,
 } from '@mui/icons-material';
 import { descargarBlob } from '../utils/gestionTecnicaDocumentoExcel';
 import { gestionTecnicaDocumentoAPI } from '../services/api';
@@ -478,6 +479,32 @@ function BadgeEstatusMovimiento({ estatus }: { estatus?: string | null }) {
   );
 }
 
+function formatearFechaDocumento(valor?: string | null): string {
+  if (!valor) return '—';
+  const d = new Date(valor);
+  if (Number.isNaN(d.getTime())) return valor;
+  return d.toLocaleString('es-DO', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function actividadDocumento(doc: DocumentoTecnicoObra): {
+  etiqueta: 'Creado' | 'Modificado';
+  fecha: string;
+} {
+  const creado = Date.parse(doc.created_at || '') || 0;
+  const actualizado = Date.parse(doc.updated_at || '') || 0;
+  const esModificado = actualizado > 0 && creado > 0 && actualizado - creado > 2000;
+  return {
+    etiqueta: esModificado ? 'Modificado' : 'Creado',
+    fecha: formatearFechaDocumento(esModificado ? doc.updated_at : doc.created_at || doc.updated_at),
+  };
+}
+
 function BuscadorDocumentosTecnicos({
   busqueda,
   onBusquedaChange,
@@ -606,6 +633,8 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
   const { user } = useAuth();
   const { areas, loadingAreas } = useAreas();
   const [documentos, setDocumentos] = useState<DocumentoTecnicoObra[]>([]);
+  const [documentosRecientes, setDocumentosRecientes] = useState<DocumentoTecnicoObra[]>([]);
+  const [loadingRecientes, setLoadingRecientes] = useState(false);
   const [movimientos, setMovimientos] = useState<MovimientoDocumentoTecnicoObra[]>([]);
   const [seleccionado, setSeleccionado] = useState<DocumentoTecnicoObra | null>(null);
   const [editandoId, setEditandoId] = useState<string | null>(null);
@@ -651,6 +680,7 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
 
   const [modoNuevo, setModoNuevo] = useState(false);
   const [secDocumento, setSecDocumento] = useState(false);
+  const [secRecientes, setSecRecientes] = useState(false);
   const [secMovimientos, setSecMovimientos] = useState(true);
   const [secFormMov, setSecFormMov] = useState(false);
 
@@ -691,6 +721,22 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
       setLoading(false);
     }
   }, [busqueda]);
+
+  const cargarDocumentosRecientes = useCallback(async () => {
+    try {
+      setLoadingRecientes(true);
+      const resp = await gestionTecnicaDocumentoAPI.listarDocumentosRecientes(20);
+      setDocumentosRecientes(resp.data.data || []);
+    } catch {
+      setDocumentosRecientes([]);
+    } finally {
+      setLoadingRecientes(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void cargarDocumentosRecientes();
+  }, [cargarDocumentosRecientes]);
 
   const cargarMovimientos = useCallback(async (solicitud: string) => {
     try {
@@ -1178,7 +1224,7 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
       );
       const guardado = resp.data.data;
       setModoNuevo(false);
-      await cargarDocumentos();
+      await Promise.all([cargarDocumentos(), cargarDocumentosRecientes()]);
       if (guardado) {
         const refreshResp = await gestionTecnicaDocumentoAPI.obtenerDocumentoPorId(guardado.id);
         const docActualizado = refreshResp.data.data || guardado;
@@ -1209,7 +1255,7 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
         setBusqueda('');
       }
       resetDocForm();
-      await cargarDocumentos();
+      await Promise.all([cargarDocumentos(), cargarDocumentosRecientes()]);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'No se pudo eliminar');
     }
@@ -1242,17 +1288,18 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
     try {
       setGuardando(true);
       setError(null);
+      const nombreUsuario = user
+        ? [user.nombre, user.apellido].filter(Boolean).join(' ').trim()
+        : '';
       if (editandoMovId) {
         await gestionTecnicaDocumentoAPI.actualizarMovimiento(editandoMovId, {
           solicitud: seleccionado.solicitud,
           ...payload,
           archivo: movPdfFile,
           quitar_pdf: !movPdfFile && quitarMovPdf,
+          usuario: nombreUsuario || undefined,
         });
       } else {
-        const nombreUsuario = user
-          ? [user.nombre, user.apellido].filter(Boolean).join(' ').trim()
-          : '';
         await gestionTecnicaDocumentoAPI.guardarMovimiento({
           solicitud: seleccionado.solicitud,
           ...payload,
@@ -1261,7 +1308,7 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
         });
       }
       resetMovForm();
-      await cargarMovimientos(seleccionado.solicitud);
+      await Promise.all([cargarMovimientos(seleccionado.solicitud), cargarDocumentosRecientes()]);
     } catch (err: any) {
       setError(
         err?.response?.data?.error ||
@@ -1278,7 +1325,10 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
     try {
       await gestionTecnicaDocumentoAPI.eliminarMovimiento(mov.id);
       if (editandoMovId === mov.id) resetMovForm();
-      if (seleccionado) await cargarMovimientos(seleccionado.solicitud);
+      await Promise.all([
+        seleccionado ? cargarMovimientos(seleccionado.solicitud) : Promise.resolve(),
+        cargarDocumentosRecientes(),
+      ]);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'No se pudo eliminar el movimiento');
     }
@@ -1335,7 +1385,7 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
         if (r.errores.length > 3) msg += ` … (+${r.errores.length - 3} más)`;
       }
       setMensajeExito(msg);
-      await cargarDocumentos();
+      await Promise.all([cargarDocumentos(), cargarDocumentosRecientes()]);
       if (seleccionado) await cargarMovimientos(seleccionado.solicitud);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'No se pudo importar el Excel');
@@ -1420,24 +1470,98 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
         </div>
       )}
 
-      <div className="space-y-1.5 shrink-0">
-        <label className={labelClass}>Buscar documento</label>
-        <BuscadorDocumentosTecnicos
-          busqueda={busqueda}
-          onBusquedaChange={setBusqueda}
-          documentos={documentos}
-          loading={loading}
-          seleccionado={seleccionado}
-          modoNuevo={modoNuevo}
-          onSeleccionar={seleccionarDocumento}
-          onQuitarSeleccion={cerrarPanelDocumento}
-        />
-        <p className="text-[11px] text-slate-400 leading-relaxed">
-          Escriba al menos un carácter para localizar una solicitud. Use «Nuevo documento» para registrar una.
-        </p>
-      </div>
-
       <div className={GT_STACK}>
+        <SeccionColapsable
+          className={GT_SECTION}
+          titulo="Búsqueda"
+          descripcion="Localice una solicitud por solicitante, contratista, contrato o SIGEDE."
+          abierto
+          onToggle={() => undefined}
+          colapsable={false}
+          icon={<Search sx={{ fontSize: 16 }} />}
+        >
+          <BuscadorDocumentosTecnicos
+            busqueda={busqueda}
+            onBusquedaChange={setBusqueda}
+            documentos={documentos}
+            loading={loading}
+            seleccionado={seleccionado}
+            modoNuevo={modoNuevo}
+            onSeleccionar={seleccionarDocumento}
+            onQuitarSeleccion={cerrarPanelDocumento}
+          />
+        </SeccionColapsable>
+
+        <SeccionColapsable
+          className={GT_SECTION}
+          titulo="Documentos recientes"
+          descripcion="Últimos documentos creados o modificados."
+          abierto={secRecientes}
+          onToggle={() => setSecRecientes((v) => !v)}
+          icon={<History sx={{ fontSize: 16 }} />}
+          badge={
+            documentosRecientes.length > 0 ? (
+              <span className={GT_BADGE}>{documentosRecientes.length}</span>
+            ) : undefined
+          }
+          acciones={
+            <button
+              type="button"
+              onClick={() => setSecRecientes((v) => !v)}
+              className={BTN_LINK}
+            >
+              {secRecientes ? 'Ocultar' : 'Mostrar'}
+            </button>
+          }
+        >
+          {loadingRecientes && documentosRecientes.length === 0 ? (
+            <div className="flex items-center justify-center min-h-[5rem]">
+              <div className="animate-spin rounded-full h-7 w-7 border-2 border-slate-200 border-t-[#42A5F5]" />
+            </div>
+          ) : documentosRecientes.length === 0 ? (
+            <div className={GT_VACIO}>
+              <p className="text-sm text-stone-500">Aún no hay documentos registrados.</p>
+            </div>
+          ) : (
+            <div className={GT_LIST_SCROLL}>
+              {documentosRecientes.map((doc) => {
+                const actividad = actividadDocumento(doc);
+                const activo = seleccionado?.id === doc.id && !modoNuevo;
+                return (
+                  <SepriListCard
+                    key={doc.id}
+                    activo={activo}
+                    onClick={() => seleccionarDocumento(doc)}
+                  >
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className="font-medium text-sm text-stone-800 truncate" title={doc.solicitud}>
+                        {doc.solicitud}
+                      </span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${
+                          actividad.etiqueta === 'Modificado'
+                            ? 'bg-blue-50 text-blue-700'
+                            : 'bg-emerald-50 text-emerald-700'
+                        }`}
+                      >
+                        {actividad.etiqueta}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-stone-400">
+                      <span>{actividad.fecha}</span>
+                      {doc.contrato?.no_contrato && <span>Contrato {doc.contrato.no_contrato}</span>}
+                      {doc.tipo_adenda && <span className="truncate max-w-[12rem]">{doc.tipo_adenda}</span>}
+                      {doc.contratista?.responsable && (
+                        <span className="truncate max-w-[12rem]">{doc.contratista.responsable}</span>
+                      )}
+                    </div>
+                  </SepriListCard>
+                );
+              })}
+            </div>
+          )}
+        </SeccionColapsable>
+
         {panelDocumentoVisible && (
         <SeccionColapsable
           className={GT_SECTION}

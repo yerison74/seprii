@@ -9,16 +9,18 @@ import {
   Chip,
   Button,
 } from '@mui/material';
-import { FollowTheSigns, Person } from '@mui/icons-material';
+import { FollowTheSigns, Person, PictureAsPdf } from '@mui/icons-material';
 import type { Tramite } from '../../services/api';
 import type { ObraSigedeResumen } from '../../types/database';
 import { getEstadoColor, getEstadoLabel } from '../../utils/estadoTramite';
+import { esTramiteGestionTecnica } from '../../utils/tramiteGestionTecnica';
 
 interface DetalleTramiteDialogProps {
   open: boolean;
   onClose: () => void;
   tramite: Tramite | null;
   onVerHistorial: () => void;
+  onVerPdf?: () => void;
 }
 
 const DetalleTramiteDialog: React.FC<DetalleTramiteDialogProps> = ({
@@ -26,10 +28,13 @@ const DetalleTramiteDialog: React.FC<DetalleTramiteDialogProps> = ({
   onClose,
   tramite,
   onVerHistorial,
+  onVerPdf,
 }) => {
   if (!tramite) {
     return null;
   }
+
+  const esGestionTecnica = esTramiteGestionTecnica(tramite);
 
   const filasObras: ObraSigedeResumen[] =
     tramite.obras_sigede?.length
@@ -55,9 +60,9 @@ const DetalleTramiteDialog: React.FC<DetalleTramiteDialogProps> = ({
           color: 'white',
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
           <FollowTheSigns />
-          <Box sx={{ minWidth: 0 }}>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography
               variant="h6"
               component="div"
@@ -70,6 +75,13 @@ const DetalleTramiteDialog: React.FC<DetalleTramiteDialogProps> = ({
               Detalle del Trámite
             </Typography>
           </Box>
+          {esGestionTecnica && (
+            <Chip
+              label="Gestión técnica"
+              size="small"
+              sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }}
+            />
+          )}
         </Box>
       </DialogTitle>
       <DialogContent sx={{ pt: 3 }}>
@@ -99,7 +111,7 @@ const DetalleTramiteDialog: React.FC<DetalleTramiteDialogProps> = ({
           </Box>
           <Box>
             <Typography variant="caption" color="text.secondary">
-              Remitente
+              {esGestionTecnica ? 'Solicitud (documento)' : 'Remitente'}
             </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
               <Person fontSize="small" color="action" />
@@ -154,6 +166,23 @@ const DetalleTramiteDialog: React.FC<DetalleTramiteDialogProps> = ({
                 : 'N/A'}
             </Typography>
           </Box>
+          {tramite.archivo_pdf && (
+            <Box sx={{ gridColumn: { sm: '1 / -1' } }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                Documento PDF
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                color="error"
+                startIcon={<PictureAsPdf />}
+                onClick={onVerPdf}
+                disabled={!onVerPdf}
+              >
+                {tramite.nombre_archivo || 'Ver PDF'}
+              </Button>
+            </Box>
+          )}
         </Box>
 
         {(tramite.obras_sigede?.length || tramite.id_sigede?.length || tramite.obra_ids?.length) ? (

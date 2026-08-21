@@ -40,6 +40,13 @@ function formatearMonto(valor?: number | null): string | null {
   return valor.toLocaleString('es-DO', { style: 'currency', currency: 'DOP' });
 }
 
+function etiquetaTipoTramite(tipo?: string | null): string | null {
+  if (tipo === 'tipo_gestion_tecnica') return 'Gestión técnica';
+  if (tipo === 'tipo_interno') return 'Interno';
+  if (tipo === 'tipo_contratista') return 'Contratista';
+  return null;
+}
+
 const ObraMasDetallesDialog: React.FC<ObraMasDetallesDialogProps> = ({ open, onClose, obra }) => {
   const [relaciones, setRelaciones] = useState<ObraRelacionesSigede | null>(null);
   const [loading, setLoading] = useState(false);
@@ -300,35 +307,69 @@ const ObraMasDetallesDialog: React.FC<ObraMasDetallesDialogProps> = ({ open, onC
                     No hay trámites vinculados a esta obra o a su contrato.
                   </p>
                 ) : (
-                  <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase">
-                        <tr>
-                          <th className="px-3 py-2 font-semibold">ID</th>
-                          <th className="px-3 py-2 font-semibold">Título</th>
-                          <th className="px-3 py-2 font-semibold">Estado</th>
-                          <th className="px-3 py-2 font-semibold">Área</th>
-                          <th className="px-3 py-2 font-semibold">Oficio</th>
-                          <th className="px-3 py-2 font-semibold">Fecha</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {relaciones.tramites.map((t) => (
-                          <tr key={t.id} className="hover:bg-gray-50">
-                            <td className="px-3 py-2 font-mono text-[#42A5F5]">{t.id}</td>
-                            <td className="px-3 py-2 max-w-[200px] truncate" title={t.titulo}>
-                              {t.titulo}
-                            </td>
-                            <td className="px-3 py-2">{getEstadoLabel(t.estado)}</td>
-                            <td className="px-3 py-2">{t.area_destinatario || '—'}</td>
-                            <td className="px-3 py-2">{t.oficio || '—'}</td>
-                            <td className="px-3 py-2 whitespace-nowrap">
-                              {formatearFecha(t.fecha_creacion) || '—'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="space-y-3">
+                    {relaciones.tramites.map((t) => {
+                      const tipoLabel = etiquetaTipoTramite(t.tipo_tramite);
+                      return (
+                        <div
+                          key={t.id}
+                          className="border border-gray-200 rounded-lg overflow-hidden"
+                        >
+                          <div className="bg-gray-50 px-3 py-2 flex flex-wrap items-center gap-2 border-b border-gray-200">
+                            <span className="text-xs text-gray-500 uppercase font-semibold">
+                              ID trámite
+                            </span>
+                            <span className="font-mono text-sm text-[#42A5F5] font-semibold">
+                              {t.id}
+                            </span>
+                            {tipoLabel && (
+                              <span className="text-[11px] px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                                {tipoLabel}
+                              </span>
+                            )}
+                            <span className="ml-auto text-xs text-gray-600">
+                              {getEstadoLabel(t.estado)}
+                            </span>
+                          </div>
+                          <div className="px-3 py-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+                            <div className="sm:col-span-2 lg:col-span-2">
+                              <div className="text-xs text-gray-500 mb-0.5">Título</div>
+                              <div className="font-medium text-gray-800 break-words">
+                                {t.titulo || '—'}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-gray-500 mb-0.5">Área</div>
+                              <div className="text-gray-800">{t.area_destinatario || '—'}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-gray-500 mb-0.5">Oficio</div>
+                              <div className="text-gray-800">{t.oficio || '—'}</div>
+                            </div>
+                            {t.nombre_destinatario && (
+                              <div className="sm:col-span-2">
+                                <div className="text-xs text-gray-500 mb-0.5">Destinatario</div>
+                                <div className="text-gray-800 break-words">
+                                  {t.nombre_destinatario}
+                                </div>
+                              </div>
+                            )}
+                            <div>
+                              <div className="text-xs text-gray-500 mb-0.5">Fecha</div>
+                              <div className="text-gray-800">
+                                {formatearFecha(t.fecha_creacion) || '—'}
+                              </div>
+                            </div>
+                            {t.proceso && (
+                              <div>
+                                <div className="text-xs text-gray-500 mb-0.5">Proceso</div>
+                                <div className="text-gray-800">{t.proceso}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </section>

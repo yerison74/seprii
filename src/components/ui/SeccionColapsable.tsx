@@ -45,7 +45,7 @@ const SeccionColapsable: React.FC<SeccionColapsableProps> = ({
         .filter(Boolean)
         .join(' ')}
     >
-      <div className={SEPRI_PANEL_HEADER}>
+      <div className={`${SEPRI_PANEL_HEADER} border-b border-warm-200/80`}>
         {icon && (
           <div
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-light/60 text-primary shadow-soft"

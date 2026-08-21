@@ -36,8 +36,8 @@ export const OBRAS_COLUMNAS_LISTADO = [
 /** Listado + coordenadas para reportes y mapas. */
 export const OBRAS_COLUMNAS_REPORTE = [...OBRAS_COLUMNAS_LISTADO, 'latitud', 'longitud'] as const;
 
-export const OBRAS_SELECT_COMPLETO = '*, contratistas(*), contrato_ref:contrato_id(id, no_contrato, lote, contratista_nombre)';
-export const OBRAS_SELECT_COMPLETO_INNER = '*, contratistas!inner(*), contrato_ref:contrato_id(id, no_contrato, lote, contratista_nombre)';
+export const OBRAS_SELECT_COMPLETO = '*, contratistas(*), contrato_ref:contrato_id(id, lote, no_contrato, contratista_nombre, contratista_id, fecha_contrato, presupuesto_centro, estatus_contrato, proceso, certificacion, monto_total_inversion, monto_total_contrato, observaciones)';
+export const OBRAS_SELECT_COMPLETO_INNER = '*, contratistas!inner(*), contrato_ref:contrato_id(id, lote, no_contrato, contratista_nombre, contratista_id, fecha_contrato, presupuesto_centro, estatus_contrato, proceso, certificacion, monto_total_inversion, monto_total_contrato, observaciones)';
 
 export const OBRAS_SELECT_DASHBOARD_PROXIMAS =
   'id, codigo, nombre, estado, fecha_inauguracion, contratista_id, contratistas(responsable)';

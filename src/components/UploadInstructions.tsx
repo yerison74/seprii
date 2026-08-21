@@ -33,9 +33,20 @@ const UploadInstructions: React.FC = () => {  return (
         <div className="flex items-start gap-3">
           <TableChart className="text-[#42A5F5] mt-1" />
           <div>
-            <div className="font-medium text-sm">Columna obligatoria:</div>
+            <div className="font-medium text-sm">Plantilla de contratistas (independiente):</div>
             <div className="text-sm text-gray-600">
-              <strong>codigo</strong> — identifica la obra; si ya existe, se actualiza.
+              Solo <code>no_contrato</code>, <code>responsable</code>, <code>identificacion</code>, <code>telefono1</code>, <code>telefono2</code> y <code>correo</code>.
+              El número de contrato identifica el registro: si existe se actualiza el contratista y se vincula a ese contrato (y a sus obras); si no, se crea.
+            </div>
+          </div>
+        </div>
+        <div className="flex items-start gap-3">
+          <TableChart className="text-[#42A5F5] mt-1" />
+          <div>
+            <div className="font-medium text-sm">Plantilla general:</div>
+            <div className="text-sm text-gray-600">
+              Si el ID existe se actualiza; si no, se crea. Obras por <code>id</code> o <code>codigo</code>.
+              Al actualizar una obra también se actualizan su contrato, contratista y adenda vinculados.
             </div>
           </div>
         </div>
@@ -125,8 +136,8 @@ const UploadInstructions: React.FC = () => {  return (
 
       <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded mt-4">
         <p className="text-sm">
-          <strong>Importante:</strong> Asegúrate de que los códigos de obra sean únicos. 
-          Si un código ya existe, se actualizará la obra existente.
+          <strong>Importante:</strong> Puede usar la plantilla general (todas las tablas) o elegir una sola tabla.
+          Las filas se conectan por ID: si actualiza una o varias obras, el cambio se refleja también en su contrato y en las tablas relacionadas.
         </p>
       </div>
     </div>

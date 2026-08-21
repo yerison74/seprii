@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { obrasService, historialUploadsService, storageService, tramitesService, notificacionesTiempoService, areasService, formularioContratistaService, documentosTecnicosService, contratistasService, adendaService, documentoTecnicoComentarioService } from './supabaseService';
+import { contratoObrasService } from './contratoObrasService';
 import { techadoService } from './techadoService';
 import { getDiasMaximosPorArea } from '../constants/procesos';
 import { mensajeNotificacionTiempo } from '../utils/notificacionesTiempo';
@@ -30,7 +31,7 @@ import {
 } from './fileProcessor';
 import type { ProgresoCargaCallback } from './fileProcessor';
 import * as XLSX from 'xlsx';
-import { generarXmlPlantillaObras } from '../constants/obraPlantillaCarga';
+import { generarXmlPlantillaObras, type TablaCarga } from '../constants/obraPlantillaCarga';
 import {
   construirWorkbookExport,
   construirWorkbookPlantilla,
@@ -38,8 +39,11 @@ import {
   workbookABlob,
 } from '../utils/gestionTecnicaDocumentoExcel';
 import {
+  asociarRelacionesAObrasPlantilla,
   construirWorkbookPlantillaObras,
   construirWorkbookExportObras,
+  construirWorkbookExportContratistas,
+  obrasAFilasPlantillaContratista,
   workbookObrasABlob,
 } from '../utils/obraPlantillaExcel';
 
@@ -213,6 +217,20 @@ export const gestionTecnicaDocumentoAPI = {
     }
   },
 
+  listarDocumentosRecientes: async (limite = 20) => {
+    try {
+      const data = await documentosTecnicosService.listarRecientes(limite);
+      return { data: { data } } as AxiosResponse<{ data: DocumentoTecnicoObra[] }>;
+    } catch (error: any) {
+      throw {
+        response: {
+          data: { error: error.message || 'Error al listar documentos recientes' },
+          status: 500,
+        },
+      };
+    }
+  },
+
   guardarDocumento: async (
     payload: {
       solicitud: string;
@@ -331,6 +349,7 @@ export const gestionTecnicaDocumentoAPI = {
       observaciones?: string | null;
       archivo?: File | null;
       quitar_pdf?: boolean;
+      usuario?: string | null;
     },
   ) => {
     try {
@@ -673,8 +692,47 @@ export const gestionTecnicaDocumentoAPI = {
 
 // Upload API - Usando Supabase
 export const uploadAPI = {
-  descargarDatos: async (filtros: ObrasFilters = {}) => {
+  descargarDatos: async (filtros: ObrasFilters = {}, tabla: TablaCarga = 'todo') => {
     try {
+      if (tabla === 'contratistas') {
+        const filtrosObra = Boolean(
+          filtros.estado ||
+            filtros.provincia ||
+            filtros.municipio ||
+            filtros.nivel ||
+            filtros.codigo ||
+            filtros.nombre ||
+            filtros.tipo_obra,
+        );
+        let filas;
+        if (filtrosObra) {
+          const PAGE = 1000;
+          const obras: Obra[] = [];
+          let offset = 0;
+          for (;;) {
+            const response = await obrasService.obtenerObras({
+              ...filtros,
+              proyeccion: 'completo',
+              limit: PAGE,
+              offset,
+            });
+            obras.push(...response.data);
+            if (response.data.length < PAGE) break;
+            offset += PAGE;
+          }
+          filas = obrasAFilasPlantillaContratista(obras);
+        } else {
+          filas = await contratoObrasService.listarFilasPlantillaContratistas({
+            noContrato: filtros.contrato,
+            responsable: filtros.responsable,
+            search: filtros.search,
+          });
+        }
+        const wb = construirWorkbookExportContratistas(filas);
+        const blob = workbookObrasABlob(wb);
+        return { data: blob } as AxiosResponse<Blob>;
+      }
+
       const PAGE = 1000;
       const obras: Obra[] = [];
       let offset = 0;
@@ -691,7 +749,19 @@ export const uploadAPI = {
         offset += PAGE;
       }
 
-      const wb = construirWorkbookExportObras(obras);
+      const contratoIds = Array.from(
+        new Set(
+          obras
+            .map((o) => o.contrato_id || o.contrato_ref?.id || '')
+            .filter(Boolean),
+        ),
+      );
+      const [contratos, adendas] = await Promise.all([
+        contratoIds.length > 0 ? contratoObrasService.listarPorIds(contratoIds) : Promise.resolve([]),
+        contratoIds.length > 0 ? adendaService.listarPorContratoIds(contratoIds) : Promise.resolve([]),
+      ]);
+      const filas = asociarRelacionesAObrasPlantilla(obras, contratos, adendas);
+      const wb = construirWorkbookExportObras(filas);
       const blob = workbookObrasABlob(wb);
 
       return {
@@ -769,7 +839,7 @@ export const uploadAPI = {
     }
   },
 
-  subirXml: async (file: File, onProgreso?: ProgresoCargaCallback) => {
+  subirXml: async (file: File, onProgreso?: ProgresoCargaCallback, tabla: TablaCarga = 'todo') => {
     try {
       onProgreso?.({ mensaje: 'Iniciando carga del archivo…', porcentaje: 2 });
       // Intentar subir archivo a Supabase Storage (opcional)
@@ -789,7 +859,7 @@ export const uploadAPI = {
 
       onProgreso?.({ mensaje: 'Procesando obras en el documento…', porcentaje: 7 });
       // Procesar archivo (esto es lo importante)
-      const resultado = await procesarArchivoXml(file, onProgreso);
+      const resultado = await procesarArchivoXml(file, onProgreso, tabla);
 
       // Registrar en historial (opcional - nunca hace fallar el upload)
       try {
@@ -830,9 +900,9 @@ export const uploadAPI = {
     }
   },
 
-  validarXml: async (file: File) => {
+  validarXml: async (file: File, tabla: TablaCarga = 'todo') => {
     try {
-      await validarArchivoXml(file);
+      await validarArchivoXml(file, tabla);
       return {
         data: { success: true, message: 'Archivo XML válido' },
       } as AxiosResponse<any>;
@@ -849,17 +919,17 @@ export const uploadAPI = {
     }
   },
 
-  descargarPlantilla: () => {
-    const xmlTemplate = generarXmlPlantillaObras();
+  descargarPlantilla: (tabla: TablaCarga = 'todo') => {
+    const xmlTemplate = generarXmlPlantillaObras(tabla);
     const blob = new Blob([xmlTemplate], { type: 'application/xml' });
     return Promise.resolve({
       data: blob,
     } as AxiosResponse<Blob>);
   },
 
-  descargarPlantillaExcel: () => {
+  descargarPlantillaExcel: (tabla: TablaCarga = 'todo') => {
     try {
-      const wb = construirWorkbookPlantillaObras();
+      const wb = construirWorkbookPlantillaObras(tabla);
       const blob = workbookObrasABlob(wb);
       return Promise.resolve({ data: blob } as AxiosResponse<Blob>);
     } catch (error: any) {
@@ -872,7 +942,7 @@ export const uploadAPI = {
     }
   },
 
-  subirExcel: async (file: File, onProgreso?: ProgresoCargaCallback) => {
+  subirExcel: async (file: File, onProgreso?: ProgresoCargaCallback, tabla: TablaCarga = 'todo') => {
     try {
       onProgreso?.({ mensaje: 'Iniciando carga del archivo…', porcentaje: 2 });
       // Intentar subir archivo a Supabase Storage (opcional)
@@ -892,7 +962,7 @@ export const uploadAPI = {
 
       onProgreso?.({ mensaje: 'Procesando filas del Excel…', porcentaje: 7 });
       // Procesar archivo (esto es lo importante)
-      const resultado = await procesarArchivoExcel(file, onProgreso);
+      const resultado = await procesarArchivoExcel(file, onProgreso, tabla);
 
       // Registrar en historial (opcional - nunca hace fallar el upload)
       try {
@@ -933,9 +1003,9 @@ export const uploadAPI = {
     }
   },
 
-  validarExcel: async (file: File) => {
+  validarExcel: async (file: File, tabla: TablaCarga = 'todo') => {
     try {
-      await validarArchivoExcel(file);
+      await validarArchivoExcel(file, tabla);
       return {
         data: { success: true, message: 'Archivo Excel válido' },
       } as AxiosResponse<any>;
