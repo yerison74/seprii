@@ -20,7 +20,11 @@ import {
   Stack
 } from '@mui/material';
 import { CARGOS } from '../../constants/cargos';
-import { MODULO_REPORTE_HABILITADO } from '../../constants/featureFlags';
+import {
+  aplicarPermisosAdmin,
+  cambiarPermisoModuloEnMapa,
+  MODULOS_PERMISOS_VISIBLES,
+} from '../../constants/modulosPermisos';
 import { useAreas } from '../../hooks/useAreas';
 import { 
   Person as PersonIcon,
@@ -29,21 +33,6 @@ import {
   Security as SecurityIcon,
   VpnKey as VpnKeyIcon
 } from '@mui/icons-material';
-const MODULOS_PERMISOS = [
-  { id: 'dashboard', label: 'Dashboard', icon: '📊', verKey: 'ver_dashboard', editarKey: 'editar_dashboard' },
-  { id: 'obras', label: 'Obras', icon: '🏗️', verKey: 'ver_obras', editarKey: 'editar_obras' },
-  { id: 'techado', label: 'Techado', icon: '🏠', verKey: 'ver_techado', editarKey: 'editar_techado' },
-  { id: 'carga_obras', label: 'Carga de Obras', icon: '📋', verKey: 'ver_carga_obras', editarKey: 'editar_carga_obras' },
-  { id: 'tramites', label: 'Seguimiento de Trámite', icon: '📄', verKey: 'ver_tramites', editarKey: 'editar_tramites' },
-  { id: 'atencion_contratista', label: 'Atención al contratista', icon: '🧑‍💼', verKey: 'ver_atencion_contratista', editarKey: 'editar_atencion_contratista' },
-  { id: 'gestion_tecnica_documento', label: 'Gestión técnica de documento', icon: '📁', verKey: 'ver_gestion_tecnica_documento', editarKey: 'editar_gestion_tecnica_documento' },
-  { id: 'reporte', label: 'Reporte', icon: '📊', verKey: 'ver_reporte', editarKey: 'editar_reporte' },
-  { id: 'configuracion', label: 'Configuración', icon: '⚙️', verKey: 'ver_configuracion', editarKey: 'editar_configuracion' },
-] as const;
-
-const MODULOS_PERMISOS_VISIBLES = MODULOS_PERMISOS.filter(
-  (m) => MODULO_REPORTE_HABILITADO || m.id !== 'reporte',
-);
 
 interface UsuarioModalProps {
   open: boolean;
@@ -66,34 +55,22 @@ export default function UsuarioModal({
 }: UsuarioModalProps) {
   const { areas, loadingAreas } = useAreas();
 
-  const actualizarPermiso = (key: string, enabled: boolean) => {
-    setForm({
-      ...form,
-      permisos: { ...(form.permisos || {}), [key]: enabled },
-    });
-  };
-
   const cambiarPermisoModulo = (
     verKey: string,
     editarKey: string,
     tipo: 'ver' | 'editar',
     enabled: boolean
   ) => {
-    const permisosActuales = { ...(form.permisos || {}) };
-    if (tipo === 'ver') {
-      permisosActuales[verKey] = enabled;
-      if (!enabled) permisosActuales[editarKey] = false;
-    } else {
-      permisosActuales[editarKey] = enabled;
-      if (enabled) permisosActuales[verKey] = true;
-    }
-    setForm({ ...form, permisos: permisosActuales });
+    setForm({
+      ...form,
+      permisos: cambiarPermisoModuloEnMapa(form.permisos || {}, verKey, editarKey, tipo, enabled),
+    });
   };
 
   const seleccionarTodosPermisos = () => {
     const allKeys = MODULOS_PERMISOS_VISIBLES.flatMap((m) => [m.verKey, m.editarKey]);
     const todosSeleccionados = allKeys.every((key) => form.permisos?.[key]);
-    const nuevosPermisos: any = {};
+    const nuevosPermisos: Record<string, boolean> = {};
     allKeys.forEach((key) => {
       nuevosPermisos[key] = !todosSeleccionados;
     });
@@ -257,12 +234,7 @@ export default function UsuarioModal({
                     const newRol = e.target.value;
                     const updates = { ...form, rol: newRol };
                     if (newRol === 'admin') {
-                      const todosPermisos: Record<string, boolean> = {};
-                      MODULOS_PERMISOS_VISIBLES.forEach((m) => {
-                        todosPermisos[m.verKey] = true;
-                        todosPermisos[m.editarKey] = true;
-                      });
-                      updates.permisos = todosPermisos;
+                      updates.permisos = aplicarPermisosAdmin(form.permisos);
                     }
                     setForm(updates);
                   }}

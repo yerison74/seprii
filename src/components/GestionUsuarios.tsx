@@ -32,17 +32,10 @@ import {
 } from '@mui/icons-material';
 import UsuarioModal from './usuarios/UsuarioModal';
 import { PERMISOS } from '../constants/permisos';
+import { aplicarPermisosAdmin } from '../constants/modulosPermisos';
 import { useAuth } from '../context/AuthContext';
 
 const TODOS_LOS_PERMISOS = Object.values(PERMISOS);
-
-function aplicarPermisosAdmin(permisosActuales: Record<string, boolean> | null | undefined) {
-  const permisos = { ...(permisosActuales || {}) };
-  TODOS_LOS_PERMISOS.forEach((codigo) => {
-    permisos[codigo] = true;
-  });
-  return permisos;
-}
 
 export default function GestionUsuarios() {
   const { hasPermission } = useAuth();

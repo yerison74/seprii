@@ -11,8 +11,13 @@ export const obtenerUsuarios = async () => {
 };
 
 export const crearUsuario = async (data: any) => {
-  const { error } = await supabase.from('usuarios_app').insert(data);
+  const { data: row, error } = await supabase
+    .from('usuarios_app')
+    .insert(data)
+    .select('id')
+    .single();
   if (error) throw error;
+  return row as { id: string };
 };
 
 export const actualizarUsuario = async (id: string, data: any) => {
@@ -21,6 +26,16 @@ export const actualizarUsuario = async (id: string, data: any) => {
     .update(data)
     .eq('id', id);
   if (error) throw error;
+};
+
+export const obtenerUsuarioPorId = async (id: string) => {
+  const { data, error } = await supabase
+    .from('usuarios_app')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
 };
 
 export const eliminarUsuario = async (id: string) => {

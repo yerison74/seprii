@@ -20,6 +20,14 @@ export const PERMISOS = {
   EDITAR_ATENCION_CONTRATISTA: 'editar_atencion_contratista',
   VER_GESTION_TECNICA_DOCUMENTO: 'ver_gestion_tecnica_documento',
   EDITAR_GESTION_TECNICA_DOCUMENTO: 'editar_gestion_tecnica_documento',
+  VER_RECURSO_HUMANO: 'ver_recurso_humano',
+  EDITAR_RECURSO_HUMANO: 'editar_recurso_humano',
+  VER_RH_PERSONAL: 'ver_rh_personal',
+  EDITAR_RH_PERSONAL: 'editar_rh_personal',
+  VER_RH_VACACIONES: 'ver_rh_vacaciones',
+  EDITAR_RH_VACACIONES: 'editar_rh_vacaciones',
+  VER_RH_PONCHE: 'ver_rh_ponche',
+  EDITAR_RH_PONCHE: 'editar_rh_ponche',
   VER_CONFIGURACION: 'ver_configuracion',
   EDITAR_CONFIGURACION: 'editar_configuracion',
   VER_REPORTE: 'ver_reporte',
@@ -46,10 +54,18 @@ export const PERMISOS_LISTA: { codigo: PermisoCode; label: string }[] = [
   { codigo: PERMISOS.EDITAR_ATENCION_CONTRATISTA, label: 'Edición de Atención al contratista' },
   { codigo: PERMISOS.VER_GESTION_TECNICA_DOCUMENTO, label: 'Visualización de Gestión técnica de documento' },
   { codigo: PERMISOS.EDITAR_GESTION_TECNICA_DOCUMENTO, label: 'Carga y edición de documentos técnicos' },
+  { codigo: PERMISOS.VER_RECURSO_HUMANO, label: 'Visualización de Recurso Humano' },
+  { codigo: PERMISOS.EDITAR_RECURSO_HUMANO, label: 'Edición de Recurso Humano' },
+  { codigo: PERMISOS.VER_RH_PERSONAL, label: 'Visualización de RH - Colaboradores' },
+  { codigo: PERMISOS.EDITAR_RH_PERSONAL, label: 'Edición de RH - Colaboradores' },
+  { codigo: PERMISOS.VER_RH_VACACIONES, label: 'Visualización de RH - Vacaciones' },
+  { codigo: PERMISOS.EDITAR_RH_VACACIONES, label: 'Edición de RH - Vacaciones' },
+  { codigo: PERMISOS.VER_RH_PONCHE, label: 'Visualización de RH - Ponche' },
+  { codigo: PERMISOS.EDITAR_RH_PONCHE, label: 'Edición de RH - Ponche' },
   { codigo: PERMISOS.VER_REPORTE, label: 'Visualización de Reporte' },
   { codigo: PERMISOS.EDITAR_REPORTE, label: 'Exportación y reportes' },
-  { codigo: PERMISOS.VER_CONFIGURACION, label: 'Visualización de Configuración' },
-  { codigo: PERMISOS.EDITAR_CONFIGURACION, label: 'Edición de Configuración' },
+  { codigo: PERMISOS.VER_CONFIGURACION, label: 'Visualización de Administración' },
+  { codigo: PERMISOS.EDITAR_CONFIGURACION, label: 'Edición de Administración' },
 ];
 
 /** Mapeo pestaña App -> permiso requerido para ver */
@@ -61,8 +77,9 @@ export const TAB_PERMISOS: Record<number, PermisoCode> = {
   4: PERMISOS.VER_TRAMITES,
   5: PERMISOS.VER_ATENCION_CONTRATISTA,
   6: PERMISOS.VER_GESTION_TECNICA_DOCUMENTO,
-  7: PERMISOS.VER_REPORTE,
-  8: PERMISOS.VER_CONFIGURACION,
+  7: PERMISOS.VER_RECURSO_HUMANO,
+  8: PERMISOS.VER_REPORTE,
+  9: PERMISOS.VER_CONFIGURACION,
 };
 
 export function tienePermiso(permisosUsuario: string[] | null | undefined, codigo: PermisoCode): boolean {

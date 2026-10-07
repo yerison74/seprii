@@ -4,7 +4,6 @@ import {
   Dashboard,
   Assignment,
   CloudUpload,
-  Settings,
   FollowTheSigns,
   Logout,
   Person,
@@ -14,11 +13,12 @@ import {
   Assessment,
   Description,
   Roofing,
+  AdminPanelSettings,
 } from '@mui/icons-material';
 import Login from './components/Login';
 import NotificacionesTiempo from './components/NotificacionesTiempo';
 import { useAuth } from './context/AuthContext';
-import { TAB_PERMISOS } from './constants/permisos';
+import { PERMISOS, TAB_PERMISOS } from './constants/permisos';
 import { MODULO_REPORTE_HABILITADO } from './constants/featureFlags';
 
 const StatsDashboard = React.lazy(() => import('./components/StatsDashboard'));
@@ -27,8 +27,9 @@ const Techado = React.lazy(() => import('./components/Techado'));
 const FileUpload = React.lazy(() => import('./components/FileUpload'));
 const TramiteHistory = React.lazy(() => import('./components/UploadHistory'));
 const GestionTecnicaDocumento = React.lazy(() => import('./components/GestionTecnicaDocumento'));
-const GestionUsuarios = React.lazy(() => import('./components/GestionUsuarios'));
 const AtencionContratista = React.lazy(() => import('./components/AtencionContratista'));
+const RecursoHumano = React.lazy(() => import('./components/RecursoHumano'));
+const Administracion = React.lazy(() => import('./components/Administracion'));
 
 const ReporteObras = MODULO_REPORTE_HABILITADO
   ? React.lazy(() => import('./components/ReporteObras'))
@@ -109,16 +110,26 @@ function App() {
     { icon: <FollowTheSigns />, label: 'Seguimiento de Trámites', index: 4 },
     { icon: <SupportAgent />, label: 'Atención al contratista', index: 5 },
     { icon: <Description />, label: 'Gestión técnica de documento', index: 6 },
+    { icon: <Person />, label: 'Recurso Humano', index: 7 },
     ...(MODULO_REPORTE_HABILITADO
-      ? [{ icon: <Assessment />, label: 'Reporte', index: 7 as const }]
+      ? [{ icon: <Assessment />, label: 'Reporte', index: 8 as const }]
       : []),
-    { icon: <Settings />, label: 'Configuración', index: 8 },
+    { icon: <AdminPanelSettings />, label: 'Administración', index: 9 },
   ];
+
+  const puedeVerAdministracion =
+    hasPermission(PERMISOS.VER_CONFIGURACION) ||
+    hasPermission(PERMISOS.CREAR_USUARIOS) ||
+    hasPermission(PERMISOS.EDITAR_USUARIOS);
 
   // Solo mostrar pestañas para las que el usuario tiene permiso
   const tabs = tramitesOnly
     ? allTabs.filter((tab) => tab.index === 4)
-    : allTabs.filter((tab) => hasPermission(TAB_PERMISOS[tab.index as keyof typeof TAB_PERMISOS]));
+    : allTabs.filter((tab) =>
+        tab.index === 9
+          ? puedeVerAdministracion
+          : hasPermission(TAB_PERMISOS[tab.index as keyof typeof TAB_PERMISOS]),
+      );
 
   // Al tener usuario, ir a la primera pestaña que tiene permiso (login o recarga)
   const allowedTabIndices = tabs.map((t) => t.index).join(',');
@@ -337,8 +348,16 @@ function App() {
                 </TabPanel>
               )}
 
-              {MODULO_REPORTE_HABILITADO && hasPermission('ver_reporte') && ReporteObras && (
+              {hasPermission('ver_recurso_humano') && (
                 <TabPanel value={tabValue} index={7}>
+                  <Suspense fallback={<TabLoading />}>
+                    <RecursoHumano />
+                  </Suspense>
+                </TabPanel>
+              )}
+
+              {MODULO_REPORTE_HABILITADO && hasPermission('ver_reporte') && ReporteObras && (
+                <TabPanel value={tabValue} index={8}>
                   <Suspense
                     fallback={
                       <div className="flex items-center justify-center min-h-[12rem]">
@@ -354,16 +373,11 @@ function App() {
                 </TabPanel>
               )}
 
-              {hasPermission('ver_configuracion') && (
-                <TabPanel value={tabValue} index={8}>
-                  <div>
-                    <h2 className="text-2xl font-semibold mb-4 text-stone-800">
-                      Configuración del Sistema
-                    </h2>
-                    <Suspense fallback={<TabLoading />}>
-                      <GestionUsuarios />
-                    </Suspense>
-                  </div>
+              {puedeVerAdministracion && (
+                <TabPanel value={tabValue} index={9}>
+                  <Suspense fallback={<TabLoading />}>
+                    <Administracion />
+                  </Suspense>
                 </TabPanel>
               )}
             </>
