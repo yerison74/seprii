@@ -47,6 +47,7 @@ export type RrhhVinculoIdentificacion = {
     nombre?: string | null;
     apellido?: string | null;
     usuario?: string | null;
+    correo?: string | null;
     cargo?: string | null;
     area?: string | null;
     activo?: boolean | null;
@@ -77,6 +78,7 @@ export type RrhhListaItem = {
 type UsuarioAppRow = {
   id: string;
   usuario?: string | null;
+  correo?: string | null;
   nombre?: string | null;
   apellido?: string | null;
   cargo?: string | null;
@@ -116,7 +118,7 @@ async function buscarUsuarioPorIdentificacion(identificacion: string): Promise<U
   const variants = Array.from(new Set([formatted, digits].filter(Boolean)));
   const { data, error } = await supabase
     .from('usuarios_app')
-    .select('id, nombre, apellido, usuario, cargo, area, activo, identificacion')
+    .select('id, nombre, apellido, usuario, correo, cargo, area, activo, identificacion')
     .in('identificacion', variants)
     .limit(1);
 
@@ -144,7 +146,7 @@ export const rrhhColaboradoresService = {
       supabase.from(TABLA_COLABORADORES).select(SELECT_COLS).order('nombre', { ascending: true }),
       supabase
         .from('usuarios_app')
-        .select('id, usuario, nombre, apellido, cargo, area, activo, identificacion')
+        .select('id, usuario, correo, nombre, apellido, cargo, area, activo, identificacion')
         .order('nombre', { ascending: true }),
     ]);
 
@@ -382,6 +384,7 @@ export const rrhhColaboradoresService = {
         nombre: usuario.nombre || null,
         apellido: usuario.apellido || null,
         usuario: usuario.usuario || null,
+        correo: usuario.correo || null,
         cargo: usuario.cargo || null,
         area: usuario.area || null,
         activo: usuario.activo ?? null,

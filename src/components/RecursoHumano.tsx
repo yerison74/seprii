@@ -11,20 +11,19 @@ import Header from './rrhh/Header';
 import Tabs from './rrhh/Tabs';
 import ColaboradoresView from './rrhh/Colaboradores';
 import ColaboradorForm, { type ColaboradorFormMode } from './rrhh/Colaboradores/ColaboradorForm';
-import VacacionesView from './rrhh/Vacaciones';
-import PoncheView from './rrhh/Ponche';
-import {
-  VACACIONES_MOCK,
-  PONCHE_MOCK,
-  type ColaboradorMock,
-  type RrhhTab,
-} from './rrhh/mockData';
+import VacacionesView, { type VacacionListaItem } from './rrhh/Vacaciones';
+import VacacionForm, { type VacacionFormMode } from './rrhh/Vacaciones/VacacionForm';
+import { type ColaboradorMock, type RrhhTab } from './rrhh/mockData';
 import {
   rrhhColaboradoresService,
   type RrhhColaborador,
 } from '../services/rrhhColaboradores.service';
+import {
+  rrhhVacacionesService,
+  type RrhhVacacion,
+} from '../services/rrhhVacaciones.service';
 
-type VistaRh = 'lista' | 'formulario';
+type VistaRh = 'lista' | 'formulario-colab' | 'formulario-vacacion';
 
 const AVATAR_COLORS = [
   'bg-[#42A5F5]',
@@ -59,15 +58,31 @@ function mapColaborador(c: RrhhColaborador, idx: number): ColaboradorMock {
   };
 }
 
+function mapVacacion(v: RrhhVacacion): VacacionListaItem {
+  return {
+    id: v.id,
+    colaboradorId: v.colaborador_id,
+    colaborador: v.colaborador?.nombre || 'Sin nombre',
+    fechaInicio: v.fecha_inicio,
+    fechaFin: v.fecha_fin,
+    dias: v.dias,
+    estado: v.estado,
+  };
+}
+
 const RecursoHumano: React.FC = () => {
   const { hasPermission } = useAuth();
   const [activeTab, setActiveTab] = useState<RrhhTab>('colaboradores');
   const [search, setSearch] = useState('');
   const [vista, setVista] = useState<VistaRh>('lista');
-  const [formMode, setFormMode] = useState<ColaboradorFormMode>('create');
-  const [editId, setEditId] = useState<string | null>(null);
+  const [formModeColab, setFormModeColab] = useState<ColaboradorFormMode>('create');
+  const [formModeVac, setFormModeVac] = useState<VacacionFormMode>('create');
+  const [editColabId, setEditColabId] = useState<string | null>(null);
+  const [editVacId, setEditVacId] = useState<string | null>(null);
   const [colaboradores, setColaboradores] = useState<ColaboradorMock[]>([]);
+  const [vacaciones, setVacaciones] = useState<VacacionListaItem[]>([]);
   const [loadingColabs, setLoadingColabs] = useState(false);
+  const [loadingVac, setLoadingVac] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const puedeEditarColaboradores =
@@ -78,20 +93,24 @@ const RecursoHumano: React.FC = () => {
     hasPermission(PERMISOS.VER_RECURSO_HUMANO) ||
     puedeEditarColaboradores;
 
+  const puedeEditarVacaciones =
+    hasPermission(PERMISOS.EDITAR_RH_VACACIONES) ||
+    hasPermission(PERMISOS.EDITAR_RECURSO_HUMANO);
+  const puedeVerVacaciones =
+    hasPermission(PERMISOS.VER_RH_VACACIONES) ||
+    hasPermission(PERMISOS.VER_RECURSO_HUMANO) ||
+    puedeEditarVacaciones;
+
+  // Ponche oculto por ahora
   const visibleTabs = useMemo(() => {
     const tabs: RrhhTab[] = [];
     if (puedeVerColaboradores) tabs.push('colaboradores');
-    if (hasPermission(PERMISOS.VER_RH_VACACIONES) || hasPermission(PERMISOS.VER_RECURSO_HUMANO)) {
-      tabs.push('vacaciones');
-    }
-    if (hasPermission(PERMISOS.VER_RH_PONCHE) || hasPermission(PERMISOS.VER_RECURSO_HUMANO)) {
-      tabs.push('ponche');
-    }
+    if (puedeVerVacaciones) tabs.push('vacaciones');
     if (tabs.length === 0 && hasPermission(PERMISOS.VER_RECURSO_HUMANO)) {
-      return ['colaboradores', 'vacaciones', 'ponche'] as RrhhTab[];
+      return ['colaboradores', 'vacaciones'] as RrhhTab[];
     }
-    return tabs.length > 0 ? tabs : (['colaboradores', 'vacaciones', 'ponche'] as RrhhTab[]);
-  }, [hasPermission, puedeVerColaboradores]);
+    return tabs.length > 0 ? tabs : (['colaboradores', 'vacaciones'] as RrhhTab[]);
+  }, [hasPermission, puedeVerColaboradores, puedeVerVacaciones]);
 
   const tabActual = visibleTabs.includes(activeTab) ? activeTab : visibleTabs[0];
 
@@ -111,34 +130,75 @@ const RecursoHumano: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => {
-    if (tabActual === 'colaboradores' && vista === 'lista') {
-      void cargarColaboradores();
+  const cargarVacaciones = useCallback(async () => {
+    setLoadingVac(true);
+    setLoadError(null);
+    try {
+      const rows = await rrhhVacacionesService.listar();
+      setVacaciones(rows.map(mapVacacion));
+    } catch (err: unknown) {
+      const msg =
+        (err as { message?: string })?.message || 'No se pudieron cargar las vacaciones.';
+      setLoadError(msg);
+      setVacaciones([]);
+    } finally {
+      setLoadingVac(false);
     }
-  }, [tabActual, vista, cargarColaboradores]);
+  }, []);
+
+  useEffect(() => {
+    if (vista !== 'lista') return;
+    if (tabActual === 'colaboradores') void cargarColaboradores();
+    if (tabActual === 'vacaciones') void cargarVacaciones();
+  }, [tabActual, vista, cargarColaboradores, cargarVacaciones]);
+
+  useEffect(() => {
+    setSearch('');
+    setLoadError(null);
+  }, [tabActual]);
 
   const handleNuevo = () => {
-    if (tabActual !== 'colaboradores' || !puedeEditarColaboradores) return;
-    setFormMode('create');
-    setEditId(null);
-    setVista('formulario');
+    if (tabActual === 'colaboradores' && puedeEditarColaboradores) {
+      setFormModeColab('create');
+      setEditColabId(null);
+      setVista('formulario-colab');
+      return;
+    }
+    if (tabActual === 'vacaciones' && puedeEditarVacaciones) {
+      setFormModeVac('create');
+      setEditVacId(null);
+      setVista('formulario-vacacion');
+    }
   };
 
-  const handleAbrir = (row: ColaboradorMock) => {
-    setEditId(row.colaboradorId || row.id);
-    setFormMode(puedeEditarColaboradores ? 'edit' : 'view');
-    setVista('formulario');
+  const handleAbrirColab = (row: ColaboradorMock) => {
+    setEditColabId(row.colaboradorId || row.id);
+    setFormModeColab(puedeEditarColaboradores ? 'edit' : 'view');
+    setVista('formulario-colab');
+  };
+
+  const handleAbrirVac = (row: VacacionListaItem) => {
+    setEditVacId(row.id);
+    setFormModeVac(puedeEditarVacaciones ? 'edit' : 'view');
+    setVista('formulario-vacacion');
   };
 
   const handleCancelarForm = () => {
     setVista('lista');
-    setEditId(null);
+    setEditColabId(null);
+    setEditVacId(null);
   };
 
-  const handleSaved = () => {
+  const handleSavedColab = () => {
     setVista('lista');
-    setEditId(null);
+    setEditColabId(null);
     void cargarColaboradores();
+  };
+
+  const handleSavedVac = () => {
+    setVista('lista');
+    setEditVacId(null);
+    void cargarVacaciones();
   };
 
   if (visibleTabs.length === 0) {
@@ -149,18 +209,35 @@ const RecursoHumano: React.FC = () => {
     );
   }
 
-  if (vista === 'formulario') {
+  if (vista === 'formulario-colab') {
     return (
       <div className="w-full">
         <ColaboradorForm
-          mode={formMode}
-          colaboradorId={editId}
+          mode={formModeColab}
+          colaboradorId={editColabId}
           onCancel={handleCancelarForm}
-          onSaved={handleSaved}
+          onSaved={handleSavedColab}
         />
       </div>
     );
   }
+
+  if (vista === 'formulario-vacacion') {
+    return (
+      <div className="w-full">
+        <VacacionForm
+          mode={formModeVac}
+          vacacionId={editVacId}
+          onCancel={handleCancelarForm}
+          onSaved={handleSavedVac}
+        />
+      </div>
+    );
+  }
+
+  const showNuevo =
+    (tabActual === 'colaboradores' && puedeEditarColaboradores) ||
+    (tabActual === 'vacaciones' && puedeEditarVacaciones);
 
   return (
     <div className={GT_PAGE}>
@@ -169,7 +246,7 @@ const RecursoHumano: React.FC = () => {
         search={search}
         onSearchChange={setSearch}
         onNuevo={handleNuevo}
-        showNuevo={tabActual === 'colaboradores' && puedeEditarColaboradores}
+        showNuevo={showNuevo}
       />
       <Tabs activeTab={tabActual} onChange={setActiveTab} visibleTabs={visibleTabs} />
 
@@ -187,12 +264,27 @@ const RecursoHumano: React.FC = () => {
             <ColaboradoresView
               colaboradores={colaboradores}
               search={search}
-              onOpen={handleAbrir}
+              onOpen={handleAbrirColab}
             />
           </>
         )}
-        {tabActual === 'vacaciones' && <VacacionesView vacaciones={VACACIONES_MOCK} />}
-        {tabActual === 'ponche' && <PoncheView registros={PONCHE_MOCK} />}
+        {tabActual === 'vacaciones' && (
+          <>
+            {loadingVac && (
+              <p className="text-sm text-stone-400 px-0.5">Cargando vacaciones…</p>
+            )}
+            {loadError && (
+              <div className={GT_ALERTA_ERROR} role="alert">
+                {loadError}
+              </div>
+            )}
+            <VacacionesView
+              vacaciones={vacaciones}
+              search={search}
+              onOpen={handleAbrirVac}
+            />
+          </>
+        )}
       </div>
     </div>
   );

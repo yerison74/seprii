@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AdminPanelSettings as AdminIcon } from '@mui/icons-material';
-import { ArrowLeft, Loader2, Plus, Save, Search, Trash2 } from 'lucide-react';
+import { ArrowLeft, Link2, Loader2, Plus, Save, Search, Trash2 } from 'lucide-react';
 import { CARGOS } from '../constants/cargos';
 import {
   aplicarPermisosAdmin,
@@ -57,10 +57,13 @@ const FIELD = 'flex flex-col gap-1.5 min-w-0';
 type Vista = 'lista' | 'formulario';
 
 type UsuarioFormState = {
+  /** Nombre de usuario para login (usuarios_app.usuario). */
   usuario: string;
   password: string;
   nombre: string;
   apellido: string;
+  /** Correo de contacto (independiente del login). */
+  correo: string;
   cargo: string;
   area: string;
   rol: string;
@@ -74,6 +77,7 @@ const EMPTY_FORM: UsuarioFormState = {
   password: '',
   nombre: '',
   apellido: '',
+  correo: '',
   cargo: '',
   area: 'Ninguna',
   rol: 'usuario',
@@ -118,6 +122,13 @@ function avatarClassForId(id: string): string {
   return AVATAR_COLORS[hash % AVATAR_COLORS.length];
 }
 
+function splitNombreCompleto(nombreCompleto: string): { nombre: string; apellido: string } {
+  const parts = nombreCompleto.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { nombre: '', apellido: '' };
+  if (parts.length === 1) return { nombre: parts[0], apellido: '' };
+  return { nombre: parts[0], apellido: parts.slice(1).join(' ') };
+}
+
 const Administracion: React.FC = () => {
   const { hasPermission } = useAuth();
   const { areas, loadingAreas } = useAreas();
@@ -137,10 +148,68 @@ const Administracion: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; ok: boolean } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [buscandoColab, setBuscandoColab] = useState(false);
+  const [colabEncontrado, setColabEncontrado] = useState<string | null>(null);
+  const cedulaLookupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setField = <K extends keyof UsuarioFormState>(key: K, value: UsuarioFormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
+
+  const isNuevo = !editId;
+
+  // Al crear usuario: si la cédula existe en colaboradores, autocompletar datos
+  useEffect(() => {
+    if (!isNuevo || vista !== 'formulario') return;
+
+    const doc = form.identificacion.trim();
+    if (cedulaLookupRef.current) clearTimeout(cedulaLookupRef.current);
+
+    if (!esCedulaCompleta(doc)) {
+      setColabEncontrado(null);
+      setBuscandoColab(false);
+      return;
+    }
+
+    cedulaLookupRef.current = setTimeout(async () => {
+      setBuscandoColab(true);
+      try {
+        const res = await rrhhColaboradoresService.buscarRelacionPorIdentificacion(doc);
+        const colab = res.colaborador;
+
+        if (!colab) {
+          setColabEncontrado(null);
+          return;
+        }
+
+        if (colab.usuario_app_id || res.usuarioApp?.id) {
+          setColabEncontrado(null);
+          setError('Esta cédula ya pertenece a un colaborador con usuario de aplicación.');
+          return;
+        }
+
+        const { nombre, apellido } = splitNombreCompleto(colab.nombre || '');
+        setForm((prev) => ({
+          ...prev,
+          nombre: nombre || prev.nombre,
+          apellido: apellido || prev.apellido,
+          correo: colab.correo?.trim() || prev.correo,
+          cargo: colab.cargo || prev.cargo,
+          area: colab.departamento?.trim() || prev.area || 'Ninguna',
+        }));
+        setColabEncontrado(colab.nombre || 'Colaborador');
+        setError(null);
+      } catch {
+        setColabEncontrado(null);
+      } finally {
+        setBuscandoColab(false);
+      }
+    }, 400);
+
+    return () => {
+      if (cedulaLookupRef.current) clearTimeout(cedulaLookupRef.current);
+    };
+  }, [form.identificacion, isNuevo, vista]);
 
   const cargar = async () => {
     setLoading(true);
@@ -176,6 +245,9 @@ const Administracion: React.FC = () => {
         String(u.usuario || '')
           .toLowerCase()
           .includes(term) ||
+        String(u.correo || '')
+          .toLowerCase()
+          .includes(term) ||
         String(u.cargo || '')
           .toLowerCase()
           .includes(term) ||
@@ -200,6 +272,7 @@ const Administracion: React.FC = () => {
     setEditId(null);
     setForm(EMPTY_FORM);
     setError(null);
+    setColabEncontrado(null);
     setVista('formulario');
   };
 
@@ -210,6 +283,7 @@ const Administracion: React.FC = () => {
       password: '',
       nombre: u.nombre || '',
       apellido: u.apellido || '',
+      correo: u.correo || '',
       cargo: u.cargo || '',
       area: u.area || 'Ninguna',
       rol: u.rol || 'usuario',
@@ -218,6 +292,7 @@ const Administracion: React.FC = () => {
       permisos: u?.rol === 'admin' ? aplicarPermisosAdmin(u?.permisos) : u?.permisos || {},
     });
     setError(null);
+    setColabEncontrado(null);
     setVista('formulario');
   };
 
@@ -226,12 +301,16 @@ const Administracion: React.FC = () => {
     setEditId(null);
     setForm(EMPTY_FORM);
     setError(null);
+    setColabEncontrado(null);
   };
 
   const validar = (): string | null => {
-    if (!form.usuario.trim()) return 'El usuario (correo) es obligatorio.';
+    if (!form.usuario.trim()) return 'El nombre de usuario es obligatorio.';
     if (!form.nombre.trim()) return 'El nombre es obligatorio.';
     if (!editId && !form.password.trim()) return 'La contraseña es obligatoria al crear el usuario.';
+    if (form.correo.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo.trim())) {
+      return 'El correo de contacto no es válido.';
+    }
     const cedulaMsg = mensajeCedulaInvalida(form.identificacion);
     if (cedulaMsg) return cedulaMsg;
     return null;
@@ -265,6 +344,7 @@ const Administracion: React.FC = () => {
         usuario: form.usuario.trim(),
         nombre: form.nombre.trim(),
         apellido: form.apellido.trim(),
+        correo: form.correo.trim() || null,
         cargo: form.cargo || null,
         area: form.area || 'Ninguna',
         rol: form.rol,
@@ -293,7 +373,7 @@ const Administracion: React.FC = () => {
           apellido: form.apellido.trim(),
           cargo: form.cargo || null,
           area: form.area || null,
-          correo: form.usuario.trim(),
+          correo: form.correo.trim() || null,
           activo: form.activo,
         });
       }
@@ -303,7 +383,7 @@ const Administracion: React.FC = () => {
     } catch (err: unknown) {
       const anyErr = err as { message?: string; code?: string };
       if (anyErr?.code === '23505' || /duplicate|unique/i.test(anyErr?.message || '')) {
-        setError('Ya existe un usuario o colaborador con ese correo o cédula.');
+        setError('Ya existe un usuario con ese nombre de usuario o cédula.');
       } else {
         setError(anyErr?.message || 'No se pudo guardar el usuario.');
       }
@@ -367,19 +447,22 @@ const Administracion: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div className={`${FIELD} sm:col-span-2`}>
                   <label className={LABEL} htmlFor="adm-usuario">
-                    Usuario (correo) *
+                    Nombre de usuario *
                   </label>
                   <input
                     id="adm-usuario"
-                    type="email"
+                    type="text"
                     value={form.usuario}
                     onChange={(e) => setField('usuario', e.target.value)}
                     className={INPUT}
                     disabled={isEdit || !canGestionar}
-                    placeholder="correo@empresa.com"
+                    placeholder="nombre.usuario"
+                    autoComplete="username"
                     required
                   />
-                  <p className="text-[11px] text-stone-400">El correo es el usuario de acceso.</p>
+                  <p className="text-[11px] text-stone-400">
+                    Identificador de acceso a la aplicación (no es el correo).
+                  </p>
                 </div>
                 <div className={`${FIELD} sm:col-span-2`}>
                   <label className={LABEL} htmlFor="adm-password">
@@ -426,23 +509,62 @@ const Administracion: React.FC = () => {
                     disabled={!canGestionar}
                   />
                 </div>
+                <div className={`${FIELD} sm:col-span-2`}>
+                  <label className={LABEL} htmlFor="adm-correo">
+                    Correo
+                  </label>
+                  <input
+                    id="adm-correo"
+                    type="email"
+                    value={form.correo}
+                    onChange={(e) => setField('correo', e.target.value)}
+                    className={INPUT}
+                    disabled={!canGestionar}
+                    placeholder="correo@empresa.com"
+                    autoComplete="email"
+                  />
+                  <p className="text-[11px] text-stone-400">
+                    Dato de contacto. Independiente del nombre de usuario.
+                  </p>
+                </div>
                 <div className={FIELD}>
                   <label className={LABEL} htmlFor="adm-identificacion">
                     Cédula
                   </label>
-                  <input
-                    id="adm-identificacion"
-                    value={form.identificacion}
-                    onChange={(e) => setField('identificacion', formatearCedulaInput(e.target.value))}
-                    className={INPUT}
-                    disabled={!canGestionar}
-                    inputMode="numeric"
-                    autoComplete="off"
-                    maxLength={13}
-                    placeholder="000-0000000-0"
-                  />
+                  <div className="relative">
+                    <input
+                      id="adm-identificacion"
+                      value={form.identificacion}
+                      onChange={(e) =>
+                        setField('identificacion', formatearCedulaInput(e.target.value))
+                      }
+                      className={INPUT}
+                      disabled={!canGestionar}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={13}
+                      placeholder="000-0000000-0"
+                    />
+                    {buscandoColab && (
+                      <Loader2
+                        size={15}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 animate-spin"
+                      />
+                    )}
+                  </div>
+                  {isNuevo && colabEncontrado && (
+                    <p
+                      className="inline-flex items-center gap-1.5 text-xs text-[#1E88E5] bg-primary-light/50 rounded-xl px-2.5 py-1.5"
+                      role="status"
+                    >
+                      <Link2 size={13} strokeWidth={1.75} />
+                      Datos tomados del colaborador {colabEncontrado}
+                    </p>
+                  )}
                   <p className="text-[11px] text-stone-400">
-                    Con cédula el usuario pasa a ser colaborador. Formato 000-0000000-0.
+                    {isNuevo
+                      ? 'Si la cédula existe en colaboradores, se completan nombre, apellido, correo, cargo y área.'
+                      : 'Con cédula el usuario queda vinculado como colaborador. Formato 000-0000000-0.'}
                   </p>
                 </div>
               </div>
@@ -719,8 +841,9 @@ const Administracion: React.FC = () => {
               <thead className={GT_TABLA_HEAD}>
                 <tr>
                   <th className={`${GT_TABLA_TH} w-12`}>Foto</th>
-                  <th className={GT_TABLA_TH}>Usuario</th>
+                  <th className={GT_TABLA_TH}>Nombre de usuario</th>
                   <th className={GT_TABLA_TH}>Nombre</th>
+                  <th className={GT_TABLA_TH}>Correo</th>
                   <th className={GT_TABLA_TH}>Cargo</th>
                   <th className={GT_TABLA_TH}>Área</th>
                   <th className={GT_TABLA_TH}>Rol</th>
@@ -758,6 +881,7 @@ const Administracion: React.FC = () => {
                     <td className={`${GT_TABLA_TD} whitespace-nowrap`}>
                       {[u.nombre, u.apellido].filter(Boolean).join(' ') || '—'}
                     </td>
+                    <td className={`${GT_TABLA_TD} whitespace-nowrap`}>{u.correo || '—'}</td>
                     <td className={`${GT_TABLA_TD} whitespace-nowrap`}>{u.cargo || '—'}</td>
                     <td className={`${GT_TABLA_TD} whitespace-nowrap`}>
                       {!u.area || u.area === 'Ninguna' ? '—' : u.area}

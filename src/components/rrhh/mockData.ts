@@ -1,5 +1,5 @@
 export type EstadoColaborador = 'Activo' | 'Inactivo';
-export type EstadoVacacion = 'Aprobada' | 'Pendiente';
+export type EstadoVacacion = 'Aprobada' | 'Pendiente' | 'Rechazada';
 export type EstadoPonche = 'Completo' | 'Tardío' | 'Ausente';
 
 export type RrhhTab = 'colaboradores' | 'vacaciones' | 'ponche';

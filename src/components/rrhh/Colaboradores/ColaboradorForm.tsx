@@ -24,6 +24,7 @@ import {
   type RrhhColaboradorEstado,
   type RrhhVinculoIdentificacion,
 } from '../../../services/rrhhColaboradores.service';
+import { obtenerUsuarioPorId } from '../../../services/usuarios.service';
 import {
   esCedulaCompleta,
   formatearCedulaInput,
@@ -55,6 +56,8 @@ type FormState = {
   direccion: string;
   estado: RrhhColaboradorEstado;
   usuario_app_id: string | null;
+  /** Nombre de usuario de app (usuarios_app.usuario); solo lectura / vínculo. */
+  usuario: string;
 };
 
 const EMPTY: FormState = {
@@ -67,6 +70,7 @@ const EMPTY: FormState = {
   direccion: '',
   estado: 'Activo',
   usuario_app_id: null,
+  usuario: '',
 };
 
 const ColaboradorForm: React.FC<ColaboradorFormProps> = ({
@@ -111,6 +115,13 @@ const ColaboradorForm: React.FC<ColaboradorFormProps> = ({
         if (!colab) throw new Error('Colaborador no encontrado.');
         if (cancelled) return;
 
+        let usuarioLogin = '';
+        if (colab.usuario_app_id) {
+          const u = await obtenerUsuarioPorId(colab.usuario_app_id);
+          if (cancelled) return;
+          usuarioLogin = u?.usuario || '';
+        }
+
         setForm({
           nombre: colab.nombre || '',
           identificacion: formatearCedulaInput(colab.identificacion || ''),
@@ -118,6 +129,7 @@ const ColaboradorForm: React.FC<ColaboradorFormProps> = ({
           departamento: colab.departamento || '',
           telefono: colab.telefono || '',
           correo: colab.correo || '',
+          usuario: usuarioLogin,
           direccion: colab.direccion || '',
           estado: colab.estado === 'Inactivo' ? 'Inactivo' : 'Activo',
           usuario_app_id: colab.usuario_app_id || null,
@@ -148,7 +160,11 @@ const ColaboradorForm: React.FC<ColaboradorFormProps> = ({
 
     if (!esCedulaCompleta(doc)) {
       setVinculo(null);
-      setForm((prev) => (prev.usuario_app_id ? { ...prev, usuario_app_id: null } : prev));
+      setForm((prev) =>
+        prev.usuario_app_id || prev.usuario
+          ? { ...prev, usuario_app_id: null, usuario: '' }
+          : prev,
+      );
       return;
     }
 
@@ -160,7 +176,7 @@ const ColaboradorForm: React.FC<ColaboradorFormProps> = ({
 
         if (res.colaborador) {
           setError('Ya existe un colaborador con esta cédula.');
-          setForm((prev) => ({ ...prev, usuario_app_id: null }));
+          setForm((prev) => ({ ...prev, usuario_app_id: null, usuario: '' }));
           return;
         }
 
@@ -173,13 +189,14 @@ const ColaboradorForm: React.FC<ColaboradorFormProps> = ({
           setForm((prev) => ({
             ...prev,
             usuario_app_id: res.usuarioApp!.id,
+            usuario: res.usuarioApp?.usuario || '',
+            correo: prev.correo.trim() ? prev.correo : res.usuarioApp?.correo || '',
             nombre: prev.nombre.trim() ? prev.nombre : nombreUsuario,
             cargo: prev.cargo.trim() ? prev.cargo : res.usuarioApp?.cargo || '',
             departamento: prev.departamento.trim() ? prev.departamento : res.usuarioApp?.area || '',
-            correo: prev.correo.trim() ? prev.correo : res.usuarioApp?.usuario || '',
           }));
         } else {
-          setForm((prev) => ({ ...prev, usuario_app_id: null }));
+          setForm((prev) => ({ ...prev, usuario_app_id: null, usuario: '' }));
         }
       } catch {
         setVinculo(null);
@@ -360,6 +377,26 @@ const ColaboradorForm: React.FC<ColaboradorFormProps> = ({
                   <option value="Inactivo">Inactivo</option>
                 </select>
               </div>
+
+              <div className={FIELD}>
+                <label className={LABEL} htmlFor="colab-usuario">
+                  Nombre de usuario
+                </label>
+                <input
+                  id="colab-usuario"
+                  value={form.usuario}
+                  className={INPUT}
+                  disabled
+                  readOnly
+                  placeholder="Sin usuario de aplicación"
+                  aria-readonly="true"
+                />
+                <p className="text-[11px] text-stone-400">
+                  {form.usuario
+                    ? 'Identificador de acceso a la app (no es el correo de contacto).'
+                    : 'Se mostrará cuando el colaborador tenga un usuario en Administración.'}
+                </p>
+              </div>
             </div>
           </section>
 
@@ -435,6 +472,7 @@ const ColaboradorForm: React.FC<ColaboradorFormProps> = ({
                   disabled={readOnlyColab}
                   placeholder="correo@empresa.com"
                 />
+                <p className="text-[11px] text-stone-400">Dato de contacto. Independiente del nombre de usuario.</p>
               </div>
               <div className={FIELD}>
                 <label className={LABEL} htmlFor="colab-direccion">

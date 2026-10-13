@@ -1,62 +1,91 @@
 import React from 'react';
 import Badge from '../Badge';
-import type { VacacionMock } from '../mockData';
+import {
+  GT_TABLA,
+  GT_TABLA_HEAD,
+  GT_TABLA_TD,
+  GT_TABLA_TH,
+  GT_TABLA_WRAP,
+  GT_VACIO,
+} from '../../../constants/gestionTecnicaDocumentoUi';
+import type { VacacionListaItem } from './types';
 
 interface VacationTableProps {
-  vacaciones: VacacionMock[];
+  vacaciones: VacacionListaItem[];
+  onOpen?: (row: VacacionListaItem) => void;
 }
 
 function formatearFecha(iso: string): string {
   const [y, m, d] = iso.split('-');
+  if (!y || !m || !d) return iso || '—';
   return `${d}/${m}/${y}`;
 }
 
-const VacationTable: React.FC<VacationTableProps> = ({ vacaciones }) => (
-  <div className="overflow-x-auto">
-    <table className="min-w-full text-sm">
-      <thead>
-        <tr className="bg-slate-50/80 border-b border-[#e5e7eb] text-left">
-          <th className="px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">
-            Colaborador
-          </th>
-          <th className="px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">
-            Fecha inicio
-          </th>
-          <th className="px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">
-            Fecha fin
-          </th>
-          <th className="px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">
-            Días
-          </th>
-          <th className="px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">
-            Estado
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {vacaciones.map((v) => (
-          <tr
-            key={v.id}
-            className="border-b last:border-b-0 border-[#e5e7eb] hover:bg-slate-50/70 transition-colors"
-          >
-            <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">
-              {v.colaborador}
-            </td>
-            <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
-              {formatearFecha(v.fechaInicio)}
-            </td>
-            <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
-              {formatearFecha(v.fechaFin)}
-            </td>
-            <td className="px-4 py-3 text-slate-600 tabular-nums">{v.dias}</td>
-            <td className="px-4 py-3">
-              <Badge tone={v.estado === 'Aprobada' ? 'success' : 'warning'}>{v.estado}</Badge>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-);
+function toneEstado(estado: VacacionListaItem['estado']) {
+  if (estado === 'Aprobada') return 'success' as const;
+  if (estado === 'Rechazada') return 'danger' as const;
+  return 'warning' as const;
+}
+
+const VacationTable: React.FC<VacationTableProps> = ({ vacaciones, onOpen }) => {
+  if (vacaciones.length === 0) {
+    return (
+      <div className={GT_VACIO}>
+        <p className="text-sm text-stone-500">No hay vacaciones registradas con los filtros actuales.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={GT_TABLA_WRAP}>
+      <div className="overflow-x-auto">
+        <table className={GT_TABLA}>
+          <thead className={GT_TABLA_HEAD}>
+            <tr>
+              <th className={GT_TABLA_TH}>Colaborador</th>
+              <th className={GT_TABLA_TH}>Fecha inicio</th>
+              <th className={GT_TABLA_TH}>Fecha fin</th>
+              <th className={GT_TABLA_TH}>Días</th>
+              <th className={GT_TABLA_TH}>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {vacaciones.map((v) => (
+              <tr
+                key={v.id}
+                role={onOpen ? 'button' : undefined}
+                tabIndex={onOpen ? 0 : undefined}
+                onClick={() => onOpen?.(v)}
+                onKeyDown={(e) => {
+                  if (!onOpen) return;
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onOpen(v);
+                  }
+                }}
+                className={[
+                  'border-b border-warm-100/80 last:border-b-0 transition-colors',
+                  onOpen
+                    ? 'hover:bg-primary-light/30 cursor-pointer focus-visible:bg-primary-light/40 focus-visible:outline-none'
+                    : 'hover:bg-warm-50/40',
+                ].join(' ')}
+              >
+                <td className={`${GT_TABLA_TD} font-medium text-stone-800 whitespace-nowrap`}>
+                  {v.colaborador}
+                </td>
+                <td className={`${GT_TABLA_TD} whitespace-nowrap`}>{formatearFecha(v.fechaInicio)}</td>
+                <td className={`${GT_TABLA_TD} whitespace-nowrap`}>{formatearFecha(v.fechaFin)}</td>
+                <td className={`${GT_TABLA_TD} tabular-nums`}>{v.dias}</td>
+                <td className={GT_TABLA_TD}>
+                  <Badge tone={toneEstado(v.estado)}>{v.estado}</Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
 
 export default VacationTable;

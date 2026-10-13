@@ -25,8 +25,8 @@ const TITULOS: Record<
   },
   vacaciones: {
     titulo: 'Vacaciones',
-    subtitulo: 'Gestiona las solicitudes y el calendario de vacaciones de los colaboradores.',
-    boton: 'Nueva solicitud',
+    subtitulo: 'Registra y consulta las vacaciones de los colaboradores.',
+    boton: 'Registrar vacaciones',
   },
   ponche: {
     titulo: 'Ponche',
@@ -50,7 +50,7 @@ const Header: React.FC<HeaderProps> = ({
       title={meta.titulo}
       description={meta.subtitulo}
     >
-      {activeTab === 'colaboradores' && (
+      {(activeTab === 'colaboradores' || activeTab === 'vacaciones') && (
         <div className="relative min-w-[200px] sm:min-w-[240px] w-full sm:w-auto">
           <Search
             size={16}
@@ -60,7 +60,9 @@ const Header: React.FC<HeaderProps> = ({
           <input
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Buscar colaborador..."
+            placeholder={
+              activeTab === 'vacaciones' ? 'Buscar vacaciones...' : 'Buscar colaborador...'
+            }
             className={`w-full pl-9 pr-3 py-2.5 rounded-xl text-sm text-stone-700 placeholder:text-stone-400 bg-white border-0 outline-none ${SEPRI_FIELD_SHADOW}`}
           />
         </div>

@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { BTN_NAV } from '../buttonStyles';
-import type { VacacionMock } from '../mockData';
+import type { VacacionListaItem } from './types';
 
 interface VacationCalendarProps {
-  vacaciones: VacacionMock[];
+  vacaciones: VacacionListaItem[];
 }
 
 const MESES = [
@@ -51,7 +51,6 @@ const VacationCalendar: React.FC<VacationCalendarProps> = ({ vacaciones }) => {
     const month = cursor.getMonth();
     const primerDia = new Date(year, month, 1);
     const ultimoDia = new Date(year, month + 1, 0);
-    // Monday-first offset
     const offset = (primerDia.getDay() + 6) % 7;
     const dias: Array<{ date: Date; inMonth: boolean } | null> = [];
 
@@ -117,6 +116,7 @@ const VacationCalendar: React.FC<VacationCalendarProps> = ({ vacaciones }) => {
           );
           const tieneAprobada = marcados.some((v) => v.estado === 'Aprobada');
           const tienePendiente = marcados.some((v) => v.estado === 'Pendiente');
+          const tieneRechazada = marcados.some((v) => v.estado === 'Rechazada');
 
           return (
             <div
@@ -130,10 +130,11 @@ const VacationCalendar: React.FC<VacationCalendarProps> = ({ vacaciones }) => {
               ].join(' ')}
             >
               <span>{celda.date.getDate()}</span>
-              {(tieneAprobada || tienePendiente) && (
+              {(tieneAprobada || tienePendiente || tieneRechazada) && (
                 <span className="flex items-center gap-0.5">
                   {tieneAprobada && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
                   {tienePendiente && <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />}
+                  {tieneRechazada && <span className="h-1.5 w-1.5 rounded-full bg-red-400" />}
                 </span>
               )}
             </div>
@@ -147,6 +148,9 @@ const VacationCalendar: React.FC<VacationCalendarProps> = ({ vacaciones }) => {
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-amber-400" /> Pendiente
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-red-400" /> Rechazada
         </span>
       </div>
     </div>
