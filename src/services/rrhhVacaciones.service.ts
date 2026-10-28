@@ -68,15 +68,26 @@ export function esFechaPasada(fechaIso: string): boolean {
   return f < fechaHoyLocal();
 }
 
-/** Días calendario inclusivos entre dos fechas ISO (YYYY-MM-DD). */
+/**
+ * Días hábiles inclusivos entre dos fechas ISO (YYYY-MM-DD).
+ * No cuenta sábado ni domingo.
+ */
 export function calcularDiasVacacion(fechaInicio: string, fechaFin: string): number {
   const [yi, mi, di] = fechaInicio.split('-').map(Number);
   const [yf, mf, df] = fechaFin.split('-').map(Number);
   if (!yi || !mi || !di || !yf || !mf || !df) return 0;
-  const ini = Date.UTC(yi, mi - 1, di);
-  const fin = Date.UTC(yf, mf - 1, df);
-  if (fin < ini) return 0;
-  return Math.floor((fin - ini) / 86_400_000) + 1;
+
+  const cursor = new Date(yi, mi - 1, di);
+  const fin = new Date(yf, mf - 1, df);
+  if (fin < cursor) return 0;
+
+  let dias = 0;
+  while (cursor <= fin) {
+    const diaSemana = cursor.getDay(); // 0=domingo, 6=sábado
+    if (diaSemana !== 0 && diaSemana !== 6) dias += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dias;
 }
 
 function assertFechasNoPasadas(fechaInicio: string, fechaFin: string): void {

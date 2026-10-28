@@ -6,6 +6,7 @@ import {
   Delete,
   Close,
   Add,
+  ArrowBack,
   KeyboardArrowDown,
   Check,
   Upload,
@@ -16,7 +17,6 @@ import {
   ErrorOutline,
   AttachFile,
   PictureAsPdf,
-  History,
 } from '@mui/icons-material';
 import { descargarBlob } from '../utils/gestionTecnicaDocumentoExcel';
 import { gestionTecnicaDocumentoAPI } from '../services/api';
@@ -53,6 +53,7 @@ import {
   GT_BLOQUE_FORM_ACTIVO,
   GT_BLOQUE_TITULO,
   GT_TABLA,
+  GT_TABLA_WRAP,
   GT_TABLA_HEAD,
   GT_TABLA_TH,
   GT_TABLA_TD,
@@ -505,62 +506,30 @@ function actividadDocumento(doc: DocumentoTecnicoObra): {
   };
 }
 
-function BuscadorDocumentosTecnicos({
+function ListaDocumentosUnificada({
   busqueda,
   onBusquedaChange,
   documentos,
+  documentosRecientes,
   loading,
-  seleccionado,
-  modoNuevo,
+  loadingRecientes,
   onSeleccionar,
-  onQuitarSeleccion,
 }: {
   busqueda: string;
   onBusquedaChange: (value: string) => void;
   documentos: DocumentoTecnicoObra[];
+  documentosRecientes: DocumentoTecnicoObra[];
   loading: boolean;
-  seleccionado: DocumentoTecnicoObra | null;
-  modoNuevo: boolean;
+  loadingRecientes: boolean;
   onSeleccionar: (doc: DocumentoTecnicoObra) => void;
-  onQuitarSeleccion: () => void;
 }) {
-  const [abierto, setAbierto] = useState(false);
-  const contenedorRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const cerrar = (e: MouseEvent) => {
-      if (contenedorRef.current && !contenedorRef.current.contains(e.target as Node)) {
-        setAbierto(false);
-      }
-    };
-    document.addEventListener('mousedown', cerrar);
-    return () => document.removeEventListener('mousedown', cerrar);
-  }, []);
-
-  if (seleccionado && !modoNuevo) {
-    const subtitulo = [
-      seleccionado.cuadrantes,
-      seleccionado.contratista?.responsable,
-      seleccionado.contrato?.no_contrato && `Contrato ${seleccionado.contrato.no_contrato}`,
-      (seleccionado.id_sigede || []).slice(0, 2).join(' · '),
-    ]
-      .filter(Boolean)
-      .join(' · ') || undefined;
-
-    return (
-      <ItemSeleccionado
-        titulo={seleccionado.solicitud}
-        subtitulo={subtitulo}
-        onQuitar={onQuitarSeleccion}
-      />
-    );
-  }
-
   const term = busqueda.trim();
-  const mostrarPanel = abierto && term.length > 0;
+  const buscando = term.length > 0;
+  const lista = buscando ? documentos : documentosRecientes;
+  const cargando = buscando ? loading : loadingRecientes;
 
   return (
-    <div ref={contenedorRef} className="relative">
+    <div className="space-y-3">
       <div className="relative">
         <Search
           className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
@@ -569,60 +538,91 @@ function BuscadorDocumentosTecnicos({
         <input
           type="text"
           value={busqueda}
-          onChange={(e) => {
-            onBusquedaChange(e.target.value);
-            setAbierto(true);
-          }}
-          onFocus={() => setAbierto(true)}
-          placeholder="Buscar solicitante, contratista, contrato, SIGEDE…"
+          onChange={(e) => onBusquedaChange(e.target.value)}
+          placeholder="Buscar por solicitante, contratista, contrato o SIGEDE…"
           className={`${inputClass} pl-9`}
           autoComplete="off"
         />
       </div>
-      {mostrarPanel && (
-        <div className={dropdownPanelClass}>
-          <ul className={dropdownListClass}>
-            {loading && documentos.length === 0 && (
-              <li className="px-3 py-2.5 text-sm text-slate-400">Buscando…</li>
-            )}
-            {!loading && documentos.length === 0 && (
-              <li className="px-3 py-2.5 text-sm text-slate-400">Sin resultados</li>
-            )}
-            {documentos.map((doc) => (
-              <li key={doc.id}>
-                <div
-                  role="option"
-                  aria-selected={false}
-                  tabIndex={0}
-                  className={dropdownItemClass}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    onSeleccionar(doc);
-                    setAbierto(false);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      onSeleccionar(doc);
-                      setAbierto(false);
-                    }
-                  }}
-                >
-                  <span className="block truncate font-medium text-slate-800">{doc.solicitud}</span>
-                  <span className="block text-xs text-slate-400 truncate mt-0.5">
-                    {[
-                      doc.contrato?.no_contrato && `Contrato ${doc.contrato.no_contrato}`,
-                      doc.cuadrantes,
-                      doc.contratista?.responsable,
-                      doc.numero_adenda_actual,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ') || 'Sin datos adicionales'}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
+
+      <p className="text-[11px] text-stone-400 px-0.5">
+        {buscando
+          ? `Resultados de búsqueda${cargando ? '…' : ` (${lista.length})`}`
+          : `Documentos recientes${cargando ? '…' : ` (${lista.length})`} · haz clic para abrir`}
+      </p>
+
+      {cargando && lista.length === 0 ? (
+        <div className="flex items-center justify-center min-h-[5rem]">
+          <div className="animate-spin rounded-full h-7 w-7 border-2 border-slate-200 border-t-[#42A5F5]" />
+        </div>
+      ) : lista.length === 0 ? (
+        <div className={GT_VACIO}>
+          <p className="text-sm text-stone-500">
+            {buscando ? 'Sin resultados para esta búsqueda.' : 'Aún no hay documentos registrados.'}
+          </p>
+        </div>
+      ) : (
+        <div className={`${GT_TABLA_WRAP} max-h-[min(70vh,640px)] overflow-auto`}>
+          <table className={GT_TABLA}>
+            <thead className={GT_TABLA_HEAD}>
+              <tr>
+                <th className={GT_TABLA_TH}>Solicitud</th>
+                <th className={GT_TABLA_TH}>Contrato</th>
+                <th className={GT_TABLA_TH}>Contratista</th>
+                <th className={GT_TABLA_TH}>Tipo / adenda</th>
+                <th className={GT_TABLA_TH}>Actividad</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lista.map((doc) => {
+                const actividad = actividadDocumento(doc);
+                return (
+                  <tr
+                    key={doc.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onSeleccionar(doc)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onSeleccionar(doc);
+                      }
+                    }}
+                    className="border-b border-warm-100/80 last:border-b-0 transition-colors cursor-pointer hover:bg-primary-light/30 focus-visible:bg-primary-light/40 focus-visible:outline-none"
+                  >
+                    <td className={`${GT_TABLA_TD} font-medium text-stone-800 whitespace-nowrap max-w-[14rem] truncate`}>
+                      {doc.solicitud}
+                    </td>
+                    <td className={`${GT_TABLA_TD} whitespace-nowrap`}>
+                      {doc.contrato?.no_contrato || '—'}
+                    </td>
+                    <td className={`${GT_TABLA_TD} whitespace-nowrap max-w-[12rem] truncate`}>
+                      {doc.contratista?.responsable || '—'}
+                    </td>
+                    <td className={`${GT_TABLA_TD} whitespace-nowrap max-w-[12rem] truncate`}>
+                      {doc.tipo_adenda || doc.numero_adenda_actual || '—'}
+                    </td>
+                    <td className={GT_TABLA_TD}>
+                      <div className="flex flex-col gap-0.5">
+                        <span
+                          className={`inline-flex w-fit px-1.5 py-0.5 rounded-md text-[10px] font-medium ${
+                            actividad.etiqueta === 'Modificado'
+                              ? 'bg-blue-50 text-blue-700'
+                              : 'bg-emerald-50 text-emerald-700'
+                          }`}
+                        >
+                          {actividad.etiqueta}
+                        </span>
+                        <span className="text-[11px] text-stone-400 whitespace-nowrap">
+                          {actividad.fecha}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -680,7 +680,6 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
 
   const [modoNuevo, setModoNuevo] = useState(false);
   const [secDocumento, setSecDocumento] = useState(false);
-  const [secRecientes, setSecRecientes] = useState(false);
   const [secMovimientos, setSecMovimientos] = useState(true);
   const [secFormMov, setSecFormMov] = useState(false);
 
@@ -688,7 +687,7 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
     if (editandoMovId) setSecFormMov(true);
   }, [editandoMovId]);
 
-  const panelDocumentoVisible = modoNuevo || !!seleccionado;
+  const vistaDetalle = modoNuevo || !!seleccionado;
   const tituloPanelDocumento =
     modoNuevo && !editandoId
       ? 'Nuevo documento'
@@ -859,11 +858,12 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
     if (cerrarPanel) setSecDocumento(false);
   };
 
-  const cerrarPanelDocumento = () => {
+  const volverALista = () => {
     setSeleccionado(null);
     setMovimientos([]);
     setBusqueda('');
     resetDocForm();
+    resetMovForm();
   };
 
   const iniciarNuevoDocumento = () => {
@@ -883,10 +883,7 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
     setEditandoId(null);
     setModoNuevo(true);
     setSecDocumento(true);
-    setSecMovimientos(false);
-    window.requestAnimationFrame(() => {
-      formularioRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    setSecMovimientos(true);
   };
 
   const resetMovForm = () => {
@@ -1437,14 +1434,16 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
               className="hidden"
               onChange={handleImportarExcel}
             />
-            <button
-              type="button"
-              onClick={iniciarNuevoDocumento}
-              className={BTN_PRIMARY_SM}
-            >
-              <Add sx={{ fontSize: 18 }} />
-              Nuevo documento
-            </button>
+            {!vistaDetalle && (
+              <button
+                type="button"
+                onClick={iniciarNuevoDocumento}
+                className={BTN_PRIMARY_SM}
+              >
+                <Add sx={{ fontSize: 18 }} />
+                Nuevo documento
+              </button>
+            )}
           </>
         )}
       </ModuloPageHeader>
@@ -1471,103 +1470,54 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
       )}
 
       <div className={GT_STACK}>
+        {!vistaDetalle ? (
         <SeccionColapsable
           className={GT_SECTION}
-          titulo="Búsqueda"
-          descripcion="Localice una solicitud por solicitante, contratista, contrato o SIGEDE."
+          titulo="Solicitudes"
+          descripcion="Busca o elige un documento reciente para abrir su detalle y movimientos."
           abierto
           onToggle={() => undefined}
           colapsable={false}
           icon={<Search sx={{ fontSize: 16 }} />}
-        >
-          <BuscadorDocumentosTecnicos
-            busqueda={busqueda}
-            onBusquedaChange={setBusqueda}
-            documentos={documentos}
-            loading={loading}
-            seleccionado={seleccionado}
-            modoNuevo={modoNuevo}
-            onSeleccionar={seleccionarDocumento}
-            onQuitarSeleccion={cerrarPanelDocumento}
-          />
-        </SeccionColapsable>
-
-        <SeccionColapsable
-          className={GT_SECTION}
-          titulo="Documentos recientes"
-          descripcion="Últimos documentos creados o modificados."
-          abierto={secRecientes}
-          onToggle={() => setSecRecientes((v) => !v)}
-          icon={<History sx={{ fontSize: 16 }} />}
           badge={
-            documentosRecientes.length > 0 ? (
+            !busqueda.trim() && documentosRecientes.length > 0 ? (
               <span className={GT_BADGE}>{documentosRecientes.length}</span>
             ) : undefined
           }
-          acciones={
-            <button
-              type="button"
-              onClick={() => setSecRecientes((v) => !v)}
-              className={BTN_LINK}
-            >
-              {secRecientes ? 'Ocultar' : 'Mostrar'}
-            </button>
-          }
         >
-          {loadingRecientes && documentosRecientes.length === 0 ? (
-            <div className="flex items-center justify-center min-h-[5rem]">
-              <div className="animate-spin rounded-full h-7 w-7 border-2 border-slate-200 border-t-[#42A5F5]" />
-            </div>
-          ) : documentosRecientes.length === 0 ? (
-            <div className={GT_VACIO}>
-              <p className="text-sm text-stone-500">Aún no hay documentos registrados.</p>
-            </div>
-          ) : (
-            <div className={GT_LIST_SCROLL}>
-              {documentosRecientes.map((doc) => {
-                const actividad = actividadDocumento(doc);
-                const activo = seleccionado?.id === doc.id && !modoNuevo;
-                return (
-                  <SepriListCard
-                    key={doc.id}
-                    activo={activo}
-                    onClick={() => seleccionarDocumento(doc)}
-                  >
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="font-medium text-sm text-stone-800 truncate" title={doc.solicitud}>
-                        {doc.solicitud}
-                      </span>
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${
-                          actividad.etiqueta === 'Modificado'
-                            ? 'bg-blue-50 text-blue-700'
-                            : 'bg-emerald-50 text-emerald-700'
-                        }`}
-                      >
-                        {actividad.etiqueta}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-stone-400">
-                      <span>{actividad.fecha}</span>
-                      {doc.contrato?.no_contrato && <span>Contrato {doc.contrato.no_contrato}</span>}
-                      {doc.tipo_adenda && <span className="truncate max-w-[12rem]">{doc.tipo_adenda}</span>}
-                      {doc.contratista?.responsable && (
-                        <span className="truncate max-w-[12rem]">{doc.contratista.responsable}</span>
-                      )}
-                    </div>
-                  </SepriListCard>
-                );
-              })}
-            </div>
-          )}
+          <ListaDocumentosUnificada
+            busqueda={busqueda}
+            onBusquedaChange={setBusqueda}
+            documentos={documentos}
+            documentosRecientes={documentosRecientes}
+            loading={loading}
+            loadingRecientes={loadingRecientes}
+            onSeleccionar={seleccionarDocumento}
+          />
         </SeccionColapsable>
+        ) : (
+        <>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={volverALista}
+            className={`${BTN_SECONDARY_SM} inline-flex items-center gap-1.5`}
+          >
+            <ArrowBack sx={{ fontSize: 18 }} />
+            Volver a solicitudes
+          </button>
+          {seleccionado && (
+            <p className="text-sm text-stone-500 truncate min-w-0">
+              {seleccionado.solicitud}
+            </p>
+          )}
+        </div>
 
-        {panelDocumentoVisible && (
         <SeccionColapsable
           className={GT_SECTION}
           titulo={tituloPanelDocumento}
           descripcion={
-            modoNuevo
+            modoNuevo && !seleccionado
               ? 'Complete los datos y pulse «Registrar documento».'
               : soloLectura
                 ? 'Consulta del documento seleccionado.'
@@ -1578,24 +1528,15 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
           icon={<Description sx={{ fontSize: 16 }} />}
           contenidoClassName="overflow-y-auto !gap-4 sepri-dropdown-scroll"
           acciones={
-            <div className="flex items-center gap-2">
-              {seleccionado && !soloLectura && !modoNuevo && (
-                <button
-                  type="button"
-                  onClick={() => handleEliminarDocumento(seleccionado)}
-                  className={BTN_LINK}
-                >
-                  Eliminar
-                </button>
-              )}
+            seleccionado && !soloLectura && !modoNuevo ? (
               <button
                 type="button"
-                onClick={cerrarPanelDocumento}
+                onClick={() => handleEliminarDocumento(seleccionado)}
                 className={BTN_LINK}
               >
-                Cerrar
+                Eliminar
               </button>
-            </div>
+            ) : undefined
           }
         >
           <form
@@ -1981,7 +1922,7 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
               <div className="flex gap-2 justify-end pt-3 mt-1">
                 <button
                   type="button"
-                  onClick={cerrarPanelDocumento}
+                  onClick={volverALista}
                   className={BTN_SECONDARY}
                 >
                   Cancelar
@@ -2001,19 +1942,19 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
             )}
           </form>
         </SeccionColapsable>
-        )}
 
-        {/* Fila 5: Movimientos u oficios */}
+        {/* Movimientos: solo con documento ya guardado */}
+        {seleccionado && (
         <SeccionColapsable
           className={GT_SECTION}
           titulo="Movimientos u oficios"
-          descripcion={seleccionado ? seleccionado.solicitud : 'Seleccione un documento para ver movimientos.'}
+          descripcion={seleccionado.solicitud}
           abierto={secMovimientos}
           onToggle={() => setSecMovimientos((v) => !v)}
           icon={<SwapHoriz sx={{ fontSize: 16 }} />}
-          badge={seleccionado ? <span className={GT_BADGE}>{movimientos.length}</span> : undefined}
+          badge={<span className={GT_BADGE}>{movimientos.length}</span>}
           acciones={
-            seleccionado && !soloLectura && !secFormMov ? (
+            !soloLectura && !secFormMov ? (
               <button
                 type="button"
                 onClick={() => {
@@ -2034,9 +1975,6 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
             ) : undefined
           }
         >
-            {!seleccionado ? (
-              <EstadoVacio>Seleccione un documento para registrar movimientos u oficios.</EstadoVacio>
-            ) : (
               <>
                 {!soloLectura && movimientos.length > 0 && (
                   <p className="text-[11px] text-slate-400 shrink-0 px-0.5">
@@ -2323,8 +2261,10 @@ const GestionTecnicaDocumento: React.FC<GestionTecnicaDocumentoProps> = ({ soloL
                 </div>
               )}
               </>
-            )}
         </SeccionColapsable>
+        )}
+        </>
+        )}
       </div>
     </div>
   );

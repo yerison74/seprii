@@ -23,6 +23,9 @@ export type RrhhColaborador = {
   correo?: string | null;
   direccion?: string | null;
   estado?: RrhhColaboradorEstado | null;
+  fecha_ingreso?: string | null;
+  salario?: number | null;
+  completivo_salarial?: number | null;
   usuario_app_id?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -37,6 +40,9 @@ export type RrhhColaboradorCreate = {
   correo?: string | null;
   direccion?: string | null;
   estado?: RrhhColaboradorEstado;
+  fecha_ingreso?: string | null;
+  salario?: number | null;
+  completivo_salarial?: number | null;
   usuario_app_id?: string | null;
 };
 
@@ -57,7 +63,7 @@ export type RrhhVinculoIdentificacion = {
 const TABLA_COLABORADORES = 'rrhh_colaboradores';
 
 const SELECT_COLS =
-  'id, nombre, identificacion, cargo, departamento, telefono, correo, direccion, estado, usuario_app_id, created_at, updated_at';
+  'id, nombre, identificacion, cargo, departamento, telefono, correo, direccion, estado, fecha_ingreso, salario, completivo_salarial, usuario_app_id, created_at, updated_at';
 
 export type RrhhListaItem = {
   /** Clave estable para React. */
@@ -250,6 +256,17 @@ export const rrhhColaboradoresService = {
       correo: payload.correo?.trim() || null,
       direccion: payload.direccion?.trim() || null,
       estado: payload.estado || 'Activo',
+      fecha_ingreso: payload.fecha_ingreso?.trim() || null,
+      salario:
+        payload.salario !== undefined && payload.salario !== null && !Number.isNaN(payload.salario)
+          ? payload.salario
+          : null,
+      completivo_salarial:
+        payload.completivo_salarial !== undefined &&
+        payload.completivo_salarial !== null &&
+        !Number.isNaN(payload.completivo_salarial)
+          ? payload.completivo_salarial
+          : null,
       usuario_app_id: payload.usuario_app_id || null,
       updated_at: new Date().toISOString(),
     };
@@ -285,6 +302,19 @@ export const rrhhColaboradoresService = {
     if (payload.correo !== undefined) row.correo = payload.correo?.trim() || null;
     if (payload.direccion !== undefined) row.direccion = payload.direccion?.trim() || null;
     if (payload.estado !== undefined) row.estado = payload.estado;
+    if (payload.fecha_ingreso !== undefined) {
+      row.fecha_ingreso = payload.fecha_ingreso?.trim() || null;
+    }
+    if (payload.salario !== undefined) {
+      row.salario =
+        payload.salario !== null && !Number.isNaN(payload.salario) ? payload.salario : null;
+    }
+    if (payload.completivo_salarial !== undefined) {
+      row.completivo_salarial =
+        payload.completivo_salarial !== null && !Number.isNaN(payload.completivo_salarial)
+          ? payload.completivo_salarial
+          : null;
+    }
     if (payload.usuario_app_id !== undefined) row.usuario_app_id = payload.usuario_app_id || null;
 
     const { data, error } = await supabase
